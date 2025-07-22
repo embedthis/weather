@@ -6,7 +6,7 @@ It uses the HTTP client APIs to get weather information simulating a local devic
 
 The app captures user input to select the desired city.
 
-![Weather App](./doc/weather-app.avif)
+<img src="https://github.com/embedthis/weather/blob/main/doc/weather-app.avif" width="200" alt="Weather App">
 
 ## Ioto Documentation
 

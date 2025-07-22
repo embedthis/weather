@@ -16,5 +16,6 @@ images/
 ioto/.env
 ioto/build
 ioto/demo
+state/
 weather
 

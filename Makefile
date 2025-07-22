@@ -24,6 +24,11 @@ build: prep library $(NAME)
 prep:
 	@if [ ! -d state ] ; then \
 		cp -r ioto/state ./state ; \
+		rm -f state/config/web.json5 ; \
+		mkdir -p state/db ; \
+		ioto/bin/json name=Weather state/config/device.json5 ; \
+		ioto/bin/json description="Weather App" state/config/device.json5 ; \
+		ioto/bin/json model="Weather-01" state/config/device.json5 ; \
 		ioto/bin/json app=$(NAME) state/config/ioto.json5 ; \
 	fi
 
