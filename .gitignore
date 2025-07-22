@@ -13,6 +13,7 @@ device.db.jnl
 device.db.sync
 device.db
 images/
+ioto/.env
 ioto/build
 ioto/demo
 weather
