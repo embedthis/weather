@@ -1,0 +1,184 @@
+/*
+    weather.c - Demonstration weather device agent
+
+    This app simulates getting the weather and temperature. It uses the api.open-meteo.com to get
+    the temperature and weather code for a given city. It uses the geocoding-api.open-meteo.com API to
+    get the latitude and longitude of the city.
+
+    This file is linked with the Ioto device agent library.
+    To keep it simple, this app has little error checking.
+ */
+
+#include "ioto.h"
+
+static void changeCity(void *arg, Json *json);
+static int getLatLon(cchar *city, double *lat, double *lon);
+static void getWeather(cchar *city, double lat, double lon);
+
+static char *city;
+static double lat, lon;
+
+int main(int argc, char **argv)
+{
+    char  *argp;
+    cchar *show, *trace;
+    int   argind;
+
+    ioStartRuntime(0);
+
+    show = NULL;
+    trace = NULL;
+
+    for (argind = 1; argind < argc; argind++) {
+        argp = argv[argind];
+        if (*argp != '-') {
+            break;
+        }
+        if (smatch(argp, "--show") || smatch(argp, "-s")) {
+            //  Show URL, and AI request and response (--show Hh)
+            if (argind + 1 < argc) {
+                show = argv[++argind];
+            }
+        } else if (smatch(argp, "--verbose") || smatch(argp, "-v")) {
+            //  Run in verbose mode
+            trace = "stdout:raw,error,info,trace,!debug:all";
+            show = "hH";
+        }
+    }
+    if (trace) {
+        rSetLog(trace, 0, 1);
+    }
+    ioto->cmdWebShow = show;
+
+    //  Run until instructed to stop
+    ioRun(NULL);
+
+    ioStopRuntime();
+    return 0;
+}
+
+/*
+    Run the demo. Loops up to 500 times updating the weather every 10 seconds
+    Called when the device is connected to the cloud
+ */
+static void demo(void *arg)
+{
+    city = ioGet("city");
+    if (!city || !*city) {
+        //  Set a default city (in the cloud key/value store) if none is set by the UI yet
+        city = sclone("Melbourne");
+        ioSet("city", city);
+    }
+    getLatLon(city, &lat, &lon);
+
+    //  Watch for changes to the city (from the UI)
+    rWatch("db:sync:Store", (RWatchProc) changeCity, 0);
+
+    for (int i = 0; i < 500 && ioIsConnected(); i++) {
+        getWeather(city, lat, lon);
+        rInfo("weather", "Sleeping for 60 seconds");
+        rSleep(60 * TPS);
+    }
+}
+
+/*
+    Get the latitude and longitude of a city
+ */
+static int getLatLon(cchar *city, double *lat, double *lon)
+{
+    Json *response;
+    char *url;
+
+    url = sfmt("https://geocoding-api.open-meteo.com/v1/search?name=%s&count=1&language=en", city);
+    response = urlGetJson(url, NULL);
+    *lat = jsonGetDouble(response, 0, "results[0].latitude", 0);
+    *lon = jsonGetDouble(response, 0, "results[0].longitude", 0);
+    jsonFree(response);
+    rFree(url);
+    return 0;
+}
+
+/*
+    Get the weather for a city
+ */
+static void getWeather(cchar *city, double lat, double lon)
+{
+    Json   *response;
+    cchar  *outlook;
+    char   *url, buf[32], key[256];
+    double temp;
+    int    weatherCode;
+
+    rInfo("weather", "GetWeather %s", city);
+    url = sfmt(
+        "https://api.open-meteo.com/v1/forecast?latitude=%.5f&longitude=%.5f&current=weather_code,temperature_2m", lat,
+        lon);
+    response = urlGetJson(url, NULL);
+    
+    temp = jsonGetDouble(response, 0, "current.temperature_2m", 0);
+    weatherCode = jsonGetInt(response, 0, "current.weather_code", 0);
+    jsonFree(response);
+
+    if (weatherCode < 2) {
+        outlook = "sunny";
+    } else if (weatherCode < 50) {
+        outlook = "cloudy";
+    } else if (weatherCode < 85) {
+        outlook = "raining";
+    } else if (weatherCode < 86) {
+        outlook = "snowing";
+    } else {
+        outlook = "stormy";
+    }
+    // Set the outlook in the cloud Store will be synced back locally
+    rInfo("weather", "Set %s outlook: %s (%d)", city, outlook, weatherCode);
+    SFMT(key, "/city/%s/outlook", city);
+    ioSet(key, outlook);
+
+    // Set a temperature metric (keeps history)
+    rInfo("weather", "Set /city/%s/temp metric %g", city, temp);
+    ioSetMetric(SFMT(key, "/city/%s/temp", city), temp, "", 0);
+
+    rFree(url);
+}
+
+/*
+    Watch for when the "city" is changed in the UI.
+    Called when Store items change. 
+ */
+static void changeCity(void *arg, Json *json)
+{
+    cchar  *key, *newCity;
+
+    key = jsonGet(json, 0, "key", 0);
+    if (!smatch(key, "city")) {
+        return;
+    }
+    newCity = jsonGet(json, 0, "value", 0);
+    if (!newCity || !*newCity) {
+        rInfo("weather", "Change city is null");
+        return;
+    }
+    // getLatLong may yield, so assign to lat/lon before resetting city
+    getLatLon(newCity, &lat, &lon);
+    rFree(city);
+    city = sclone(newCity);
+    rInfo("weather", "ChangeCity %s (lat %g lon %g)", city, lat, lon);
+}
+
+
+/*
+    Called by Ioto to start the demo
+ */
+PUBLIC int ioStart(void)
+{
+    ioOnConnect((RWatchProc) demo, 0, 0);
+    return 0;
+}
+
+/*
+    Called by Ioto to stop the demo
+ */
+PUBLIC void ioStop(void)
+{
+}
