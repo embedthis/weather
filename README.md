@@ -1,4 +1,4 @@
-# EmbedThis Weather App
+# Ioto Sample Weather App
 
 This is a demonstration app that simulates a simple device sensor app. It creates a simulated weather station that sends weather information to the cloud.
 
@@ -6,7 +6,7 @@ It uses the HTTP client APIs to get weather information simulating a local devic
 
 The app captures user input to select the desired city.
 
-<img src="https://github.com/embedthis/weather/blob/main/doc/weather-app.avif" width="200" alt="Weather App">
+<img src="https://github.com/embedthis/weather/blob/main/doc/weather-app.avif" width="300" alt="Weather App">
 
 ## Ioto Documentation
 
