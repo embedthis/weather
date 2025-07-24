@@ -40,6 +40,9 @@ library:
 
 config:
 	cp config/ioto.json5 state/config/ioto.json5
+	if [ -f config/local.json5 ] ; then \
+		cp config/local.json5 state/config/local.json5 ; \
+	fi
 
 run:
 	./$(NAME)

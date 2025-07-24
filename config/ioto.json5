@@ -3,11 +3,7 @@
     profile: "dev",
     app: "Weather",
     api: {
-        builder: 'https://api.admin-qa.embedthis.com/api'
-    },
-    directories: {
-        log: ".",
-        state: "state"
+        builder: 'https://api.admin.embedthis.com/api'
     },
     database: {
         path: "@db/device.db",
@@ -16,6 +12,10 @@
         maxJournalAge: "15secs",
         maxSyncSize: "10k",
         service: "1hr"
+    },
+    directories: {
+        log: ".",
+        state: "state"
     },
     limits: {
         reprovision: 5,
