@@ -15,11 +15,11 @@ PATH 			:= $(PATH):/opt/homebrew/bin
 export 			PATH
 endif
 
-.PHONY: library
+.PHONY: config library prep
 
 all: build
 
-build: prep library $(NAME)
+build: prep library config $(NAME)
 
 prep:
 	@if [ ! -d state ] ; then \
@@ -37,6 +37,9 @@ $(NAME): $(NAME).c ioto/build/bin/libioto.a
 
 library:
 	@make APP=blank OPTIMIZE=$(OPTIMIZE) -C ioto 
+
+config:
+	cp config/ioto.json5 state/config/ioto.json5
 
 run:
 	./$(NAME)

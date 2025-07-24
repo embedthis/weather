@@ -1,5 +1,5 @@
 /*
-    weather.c - Demonstration weather device agent
+    weather.c - Demonstration Ioto device agent weather app
 
     This app simulates getting the weather and temperature. It uses the api.open-meteo.com to get
     the temperature and weather code for a given city. It uses the geocoding-api.open-meteo.com API to
@@ -21,12 +21,11 @@ static double lat, lon;
 int main(int argc, char **argv)
 {
     char  *argp;
-    cchar *show, *trace;
+    cchar *trace;
     int   argind;
 
     ioStartRuntime(0);
 
-    show = NULL;
     trace = NULL;
 
     for (argind = 1; argind < argc; argind++) {
@@ -34,21 +33,14 @@ int main(int argc, char **argv)
         if (*argp != '-') {
             break;
         }
-        if (smatch(argp, "--show") || smatch(argp, "-s")) {
-            //  Show URL, and AI request and response (--show Hh)
-            if (argind + 1 < argc) {
-                show = argv[++argind];
-            }
-        } else if (smatch(argp, "--verbose") || smatch(argp, "-v")) {
+        if (smatch(argp, "--verbose") || smatch(argp, "-v")) {
             //  Run in verbose mode
             trace = "stdout:raw,error,info,trace,!debug:all";
-            show = "hH";
         }
     }
     if (trace) {
         rSetLog(trace, 0, 1);
     }
-    ioto->cmdWebShow = show;
 
     //  Run until instructed to stop
     ioRun(NULL);
@@ -119,16 +111,18 @@ static void getWeather(cchar *city, double lat, double lon)
     weatherCode = jsonGetInt(response, 0, "current.weather_code", 0);
     jsonFree(response);
 
-    if (weatherCode < 2) {
+    if (weatherCode <= 1) {
         outlook = "sunny";
-    } else if (weatherCode < 50) {
+    } else if (weatherCode <= 3 || (weatherCode >= 45 && weatherCode <= 48)) {
         outlook = "cloudy";
-    } else if (weatherCode < 85) {
-        outlook = "raining";
-    } else if (weatherCode < 86) {
+    } else if ((weatherCode >= 71 && weatherCode <= 77) || weatherCode == 85 || weatherCode == 86) {
         outlook = "snowing";
-    } else {
+    } else if (weatherCode >= 95) {
         outlook = "stormy";
+    } else if (weatherCode >= 51) {
+        outlook = "raining";
+    } else {
+        outlook = "cloudy";
     }
     // Set the outlook in the cloud Store will be synced back locally
     rInfo("weather", "Set %s outlook: %s (%d)", city, outlook, weatherCode);
@@ -165,7 +159,6 @@ static void changeCity(void *arg, Json *json)
     city = sclone(newCity);
     rInfo("weather", "ChangeCity %s (lat %g lon %g)", city, lat, lon);
 }
-
 
 /*
     Called by Ioto to start the demo
