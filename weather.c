@@ -68,8 +68,8 @@ static void demo(void *arg)
 
     for (int i = 0; i < 500 && ioIsConnected(); i++) {
         getWeather(city, lat, lon);
-        rInfo("weather", "Sleeping for 60 seconds");
-        rSleep(60 * TPS);
+        rInfo("weather", "Sleeping for 10 seconds");
+        rSleep(10 * TPS);
     }
 }
 
@@ -97,7 +97,7 @@ static void getWeather(cchar *city, double lat, double lon)
 {
     Json   *response;
     cchar  *outlook;
-    char   *url, buf[32], key[256];
+    char   *url, buf[32], key[256], dim[256];
     double temp;
     int    weatherCode;
 
@@ -129,9 +129,9 @@ static void getWeather(cchar *city, double lat, double lon)
     SFMT(key, "/city/%s/outlook", city);
     ioSet(key, outlook);
 
-    // Set a temperature metric (keeps history)
-    rInfo("weather", "Set /city/%s/temp metric %g", city, temp);
-    ioSetMetric(SFMT(key, "/city/%s/temp", city), temp, "", 0);
+    // Set a temperature metric (keeps history). The deviceId is set in the cloud.
+    ioSetMetric("/city/temp", temp, SFMT(dim, "[{\"deviceId\": true, \"city\": \"%s\"}]", city), 0);
+    rInfo("weather", "Set /city/temp to %g for %s", temp, city);
 
     rFree(url);
 }
