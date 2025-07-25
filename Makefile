@@ -19,7 +19,7 @@ endif
 
 all: build
 
-build: prep library config $(NAME)
+build: library prep config $(NAME)
 
 prep:
 	@if [ ! -d state ] ; then \
