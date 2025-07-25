@@ -143,6 +143,9 @@ static Cron *cronAlloc(cchar *spec)
     char *buf, *rest;
     int  mth;
 
+    if (spec == NULL || *spec == '\0') {
+        spec = "* * * * *";
+    }
     cp = rAllocType(Cron);
 
     /*
@@ -192,7 +195,7 @@ static void cronFree(Cron *cs)
 }
 
 /*
-    Return the time to wait till the next valid time to run a cron entry.
+    Return the time in ticks to wait till the next valid time to run a cron entry.
  */
 Ticks cronUntil(cchar *spec, Time when)
 {
@@ -1045,6 +1048,48 @@ PUBLIC int ioAutomation(cchar *name, cchar *context)
     }
     return rc;
 }
+
+/*
+    Upload a file to the device cloud.
+ */
+PUBLIC int ioUpload(cchar *path, uchar *buf, ssize len)
+{
+    Url   *up;
+    cchar *response;
+    char  *api, *data, *url;
+    int   rc;
+
+    rc = R_ERR_CANT_COMPLETE;
+    up = urlAlloc(0);
+    api = sfmt("%s/tok/device/getSignedUrl", ioto->api);
+    data = sfmt(SDEF({
+        "id": "%s",
+        "command": "put",
+        "filename": "%s",
+        "mimeType": "image/jpeg"
+    }), ioto->id, path);
+
+    if (urlFetch(up, "POST", api, data, -1, "Authorization: bearer %s\r\nContent-Type: application/json\r\n",
+                 ioto->apiToken) != URL_CODE_OK) {
+        rError("nature", "Error getting signed URL");
+
+    } else if ((response = urlGetResponse(up)) == NULL) {
+        rError("nature", "Empty signed URL response");
+
+    } else {
+        url = sclone(response);
+        if (urlFetch(up, "PUT", strim(url, "\"", R_TRIM_BOTH), (char*) buf, len, "Content-Type: image/jpeg\r\n") != URL_CODE_OK) {
+            rError("nature", "Cannot upload to signed URL");
+        } else {
+            rc = 0;
+        }
+        rFree(url);
+    }
+    rFree(data);
+    rFree(api);
+    urlFree(up);
+    return rc;
+}
 #endif /* SERVICES_CLOUD */
 
 /*
@@ -1369,6 +1414,9 @@ static RR *allocRR(Mqtt *mq, cchar *topic)
     RR   *rr, *rp;
     int  index;
 
+    if (!mq || !topic) {
+        return NULL;
+    }
     rr = rAllocType(RR);
     rr->fiber = rGetFiber();
     if (++nextRr >= MAXINT) {
@@ -1383,7 +1431,11 @@ static RR *allocRR(Mqtt *mq, cchar *topic)
     if (!rp) {
         //  Subscribe to all sequence numbers on this topic, this will use the master subscription.
         SFMT(subscription, "%s/+", topic);
-        mqttSubscribe(mq, rrResponse, 1, MQTT_WAIT_NONE, subscription);
+        if (mqttSubscribe(mq, rrResponse, 1, MQTT_WAIT_NONE, subscription) < 0) {
+            rError("mqtt", "Cannot subscribe to %s", subscription);
+            freeRR(rr);
+            return NULL;
+        }
         rr->topic = sclone(topic);
     }
     rPushItem(ioto->rr, rr);
@@ -1529,15 +1581,15 @@ PUBLIC double ioGetMetric(cchar *metric, cchar *dimensions, cchar *statistic, in
 
 /*
     Define a metric in the Embedthis/Device namespace.
-    Dimensions is a JSON array of objects. Each object can contain multiple properties.
-    that define the dimension. The {} object, means all dimensions,
+    Dimensions is a JSON array of objects. Each object contains the properties of that dimension.
+    The {} object, means no dimensions.
  */
 PUBLIC void ioSetMetric(cchar *metric, double value, cchar *dimensions, int elapsed)
 {
     char *msg;
 
     if (dimensions == NULL || *dimensions == '\0') {
-        dimensions = "[{\"Device\":\"deviceId\"}]";
+        dimensions = "[]";
     }
     msg = sfmt("{\"metric\":\"%s\",\"value\":%g,\"dimensions\":%s,\"buffer\":{\"elapsed\":%d}}",
                metric, value, dimensions, elapsed);
@@ -1553,7 +1605,9 @@ PUBLIC void ioSetMetric(cchar *metric, double value, cchar *dimensions, int elap
 PUBLIC void ioSet(cchar *key, cchar *value)
 {
 #if SERVICES_SYNC
-    dbSetField(ioto->db, "Store", "value", value, DB_PROPS("key", key), NULL);
+    dbUpdate(ioto->db, "Store",
+        DB_JSON("{key: '%s', value: '%s', type: 'string'}", key, value),
+        DB_PARAMS(.upsert = 1));
 #else
     //  Optimize by using AWS basic ingest topic
     char *msg = sfmt("{\"key\":\"%s\",\"value\":\"%s\",\"type\":\"string\"}", key, value);
@@ -1570,7 +1624,9 @@ PUBLIC void ioSet(cchar *key, cchar *value)
 PUBLIC void ioSetNum(cchar *key, double value)
 {
 #if SERVICES_SYNC
-    dbSetNum(ioto->db, "Store", "value", value, DB_PROPS("key", key), NULL);
+    dbUpdate(ioto->db, "Store",
+        DB_JSON("{key: '%s', value: '%g', type: 'number'}", key, value),
+        DB_PARAMS(.upsert = 1));
 #else
     //  Optimize by using AWS basic ingest topic
     char *msg = sfmt("{\"key\":\"%s\",\"value\":%lf,\"type\":\"number\"}", key, value);
@@ -1782,7 +1838,7 @@ static int parseRegisterResponse(Json *json)
         if (ioto->provisionService) {
             //  Registered but not yet claimed
             if (once++ == 0) {
-                rInfo("ioto", "Device not claimed. Claim device with the product device app.");
+                rInfo("ioto", "Device not claimed. Claim device with the claim ID %s using the product device app.", ioto->id);
             }
         }
     }

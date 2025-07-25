@@ -1710,6 +1710,7 @@ static cchar *getIndexName(Db *db, DbParams *params)
 
 /*
     Get the index to use for this API call. Currently only supports a primary index.
+    Defaults to the primary if params is null.
  */
 static RbTree *getIndex(Db *db, DbParams *params)
 {

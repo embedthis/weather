@@ -14,7 +14,7 @@
       </ItemDefinitionGroup>
 
       <PropertyGroup Label="Globals">
-        <ProjectGuid>{74fb72c9-69ac-4207-a933-1685c9c9f56f}</ProjectGuid>
+        <ProjectGuid>{4e0a9fef-c4af-40f6-b318-a66233cae6dd}</ProjectGuid>
         <RootNamespace />
         <Keyword>Win32Proj</Keyword>
       </PropertyGroup>
@@ -119,7 +119,7 @@
 
     <ItemGroup>
       <ProjectReference Include="libioto.vcxproj">
-      <Project>3ebb8d49-125b-4f3e-ac53-e5ba6d0effae</Project>
+      <Project>1bf63e71-01ac-4a21-93fd-76ec3bafe3ee</Project>
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
       </ProjectReference>
     </ItemGroup>

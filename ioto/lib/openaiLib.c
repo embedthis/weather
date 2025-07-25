@@ -381,9 +381,7 @@ PUBLIC Json *openaiFineTune(cchar *training)
 }
 #endif /* FUTURE*/
 #else
-void dummyOpenAI(void)
-{
-}
+void dummyOpenAI(void) {}
 #endif /* ME_COM_OPENAI */
 
 /*
@@ -392,7 +390,5 @@ void dummyOpenAI(void)
  */
 
 #else
-void dummyOpenAI()
-{
-}
+void dummyOpenAI(){}
 #endif /* ME_COM_OPENAI */

@@ -281,31 +281,16 @@ PUBLIC Json *ioAPI(cchar *url, cchar *data);
  */
 PUBLIC int ioAutomation(cchar *name, cchar *context);
 
-#if SERVICES_SHADOW
 /**
-    Get a value from the shadow state.
-    @param key Property key value. May contain dots.
-    @param defaultValue Default value to return if the key is not found
-    @return Returns an allocated string. Caller must free.
+    User config entry point
+    @description The ioConfig function is invoked when Ioto has read its configuration into ioto->config
+        and before Ioto initializes services.
+        Users can provide their own ioConfig function and link with the Ioto library. Ioto will then
+        invoke the user's ioConfig for custom configuratoiun.
     @stability Evolving
+    @see ioStart, ioStop
  */
-PUBLIC char *ioGetShadow(cchar *key, cchar *defaultValue);
-
-/**
-    Set a key value in the shadow
-    @param key Property key value. May contain dots.
-    @param value Value to set.
-    @param save Set to true to persist immediately.
-    @stability Evolving
- */
-PUBLIC void ioSetShadow(cchar *key, cchar *value, bool save);
-
-/**
-    Save the shadow state immediately.
-    @stability Evolving
- */
-PUBLIC void ioSaveShadow(void);
-#endif
+ PUBLIC int ioConfig(Json *config);
 
 /**
     User start entry point
@@ -318,17 +303,6 @@ PUBLIC void ioSaveShadow(void);
 PUBLIC int ioStart(void);
 
 /**
-    User config entry point
-    @description The ioConfig function is invoked when Ioto has read its configuration into ioto->config
-        and before Ioto initializes services.
-        Users can provide their own ioConfig function and link with the Ioto library. Ioto will then
-        invoke the user's ioConfig for custom configuratoiun.
-    @stability Evolving
-    @see ioStart, ioStop
- */
-PUBLIC int ioConfig(Json *config);
-
-/**
     User stop entry point
     @description The ioStop function is invoked when Ioto is shutting down.
         Users can provide their own ioStart function and link with the Ioto library. Ioto will then
@@ -337,6 +311,45 @@ PUBLIC int ioConfig(Json *config);
     @see ioConfig, ioStart
  */
 PUBLIC void ioStop(void);
+
+/**
+    Get a value from the Ioto cloud key/value Store
+    @description This call retrieves a value from the Ioto cloud key/value store for this device.
+    @param key String key value to assign a value in the store.
+    @return value Key's string value. Caller must free.
+    @stability Evolving
+ */
+ PUBLIC char *ioGet(cchar *key);
+
+ /**
+     Get a numeric value from the Ioto cloud key/value Store
+     @description This call retrieves a value from the Ioto cloud key/value store for this device.
+     @param key String key value to assign a value in the store.
+     @return value Key's numeric value.
+     @stability Evolving
+  */
+ PUBLIC double ioGetNum(cchar *key);
+ 
+ /**
+     Convenience routine to get a value from the Ioto configuration files.
+     Get a json node value as an allocated string
+     @description This call is a thin wrapper over jsonGet(ioto->config, ...).
+     @param key Property name to search for. This may include ".". For example: "settings.mode".
+     @param defaultValue If the key is not defined, return a copy of the defaultValue. The defaultValue
+         can be NULL in which case the return value will be an allocated empty string.
+     @return An string reference into the config store or defaultValue if not defined. Caller must not free.
+     @stability Evolving
+  */
+ PUBLIC cchar *ioGetConfig(cchar *key, cchar *defaultValue);
+ 
+ /**
+     Convenience routine to get an integer value from the Ioto configuration files.
+     @param key Property name to search for. This may include ".". For example: "settings.mode".
+     @param defaultValue If the key is not defined, return the defaultValue.
+     @return The integer value from the config store or defaultValue if not defined.
+     @stability Evolving
+  */
+ PUBLIC int ioGetConfigInt(cchar *key, int defaultValue);
 
 /**
     Get a metric value in the Ioto cloud
@@ -352,83 +365,11 @@ PUBLIC void ioStop(void);
 PUBLIC double ioGetMetric(cchar *metric, cchar *dimensions, cchar *statistic, int period);
 
 /**
-    Set a metric value in the Ioto cloud
-    @description This call defines a metric in the Ioto cloud for this device.
-    @param metric String Metric name to define in the Embedthis/Device namespace.
-    @param value Double Metric value.
-    @param dimensions JSON array of dimensions as a string. Each element is an object that defines
-        the properties of that dimension. The empty object {} denotes All.
-    @param elapsed Number of seconds to optimize and buffer metric updates before committing
-        to the database.
-    @stability Evolving
- */
-PUBLIC void ioSetMetric(cchar *metric, double value, cchar *dimensions, int elapsed);
-
-/**
-    Set a string value in the Ioto cloud key/value Store
-    @description This call defines a value in the Ioto cloud key/value store for this device.
-    Uses db sync if available, otherwise uses MQTT.
-    @param key String key value to assign a value in the store.
-    @param value Value to assign to the key
-    @stability Evolving
- */
-PUBLIC void ioSet(cchar *key, cchar *value);
-
-/**
-    Set a numeric value in the Ioto cloud key/value Store
-    @description This call defines a numeric value in the Ioto cloud key/value store for this device.
-    Uses db sync if available, otherwise uses MQTT.
-    @param key String key value to assign a value in the store.
-    @param value Double value to assign to the key
-    @stability Evolving
- */
-PUBLIC void ioSetNum(cchar *key, double value);
-
-/**
-    Get a value from the Ioto cloud key/value Store
-    @description This call retrieves a value from the Ioto cloud key/value store for this device.
-    @param key String key value to assign a value in the store.
-    @return value Key's string value. Caller must free.
-    @stability Evolving
- */
-PUBLIC char *ioGet(cchar *key);
-
-/**
-    Get a numeric value from the Ioto cloud key/value Store
-    @description This call retrieves a value from the Ioto cloud key/value store for this device.
-    @param key String key value to assign a value in the store.
-    @return value Key's numeric value.
-    @stability Evolving
- */
-PUBLIC double ioGetNum(cchar *key);
-
-/**
-    Convenience routine to get a value from the Ioto configuration files.
-    Get a json node value as an allocated string
-    @description This call is a thin wrapper over jsonGet(ioto->config, ...).
-    @param key Property name to search for. This may include ".". For example: "settings.mode".
-    @param defaultValue If the key is not defined, return a copy of the defaultValue. The defaultValue
-        can be NULL in which case the return value will be an allocated empty string.
-    @return An string reference into the config store or defaultValue if not defined. Caller must not free.
-    @stability Evolving
- */
-PUBLIC cchar *ioGetConfig(cchar *key, cchar *defaultValue);
-
-/**
-    Convenience routine to get an integer value from the Ioto configuration files.
-    @param key Property name to search for. This may include ".". For example: "settings.mode".
-    @param defaultValue If the key is not defined, return the defaultValue.
-    @return The integer value from the config store or defaultValue if not defined.
-    @stability Evolving
- */
-PUBLIC int ioGetConfigInt(cchar *key, int defaultValue);
-
-/**
     Check if the device is connected to the cloud
     @return true if connected, false otherwise
     @stability Evolving
  */
-PUBLIC bool ioIsConnected(void);
+ PUBLIC bool ioIsConnected(void);
 
 /*
     Run function when connected to the cloud
@@ -441,15 +382,47 @@ PUBLIC bool ioIsConnected(void);
     @param direct Set to true to invoke the function directly without spawning a fiber.
     @stability Evolving
  */
-PUBLIC void ioOnConnect(RWatchProc fn, void *arg, bool direct);
+ PUBLIC void ioOnConnect(RWatchProc fn, void *arg, bool direct);
 
-/*
-    Disable running function when connected to the cloud
-    @param fn Function to invoke
-    @param arg Argument to supply
+ /*
+     Disable running function when connected to the cloud
+     @param fn Function to invoke
+     @param arg Argument to supply
+     @stability Evolving
+  */
+ PUBLIC void ioOnConnectOff(RWatchProc fn, void *arg);
+
+/**
+    Set a string value in the Ioto cloud key/value Store
+    @description This call defines a value in the Ioto cloud key/value store for this device.
+    Uses db sync if available, otherwise uses MQTT.
+    @param key String key value to assign a value in the store.
+    @param value Value to assign to the key
     @stability Evolving
  */
-PUBLIC void ioOnConnectOff(RWatchProc fn, void *arg);
+ PUBLIC void ioSet(cchar *key, cchar *value);
+
+/**
+    Set a metric value in the Ioto cloud
+    @description This call defines a metric in the Ioto cloud for this device.
+    @param metric String Metric name to define in the Embedthis/Device namespace.
+    @param value Double Metric value.
+    @param dimensions JSON array of dimensions as a string. Each element is an object that defines
+        the properties of that dimension. The empty object {} denotes no dimensions.
+    @param elapsed Number of seconds to buffer metric updates in the cloud before committing to the database. This is an optimization. Set to zero for no buffering.
+    @stability Evolving
+ */
+PUBLIC void ioSetMetric(cchar *metric, double value, cchar *dimensions, int elapsed);
+
+/**
+    Set a numeric value in the Ioto cloud key/value Store
+    @description This call defines a numeric value in the Ioto cloud key/value store for this device.
+    Uses db sync if available, otherwise uses MQTT.
+    @param key String key value to assign a value in the store.
+    @param value Double value to assign to the key
+    @stability Evolving
+ */
+PUBLIC void ioSetNum(cchar *key, double value);
 
 /**
     Schedule a cloud connection based on the mqtt.schedule
@@ -518,6 +491,16 @@ PUBLIC void ioSyncDown(Time timestamp);
 PUBLIC void ioSync(Time when, bool guarantee);
 #endif
 
+/** 
+    Upload a file to the device cloud.
+    @param path Path to the file to upload.
+    @param buf Buffer containing the file data.
+    @param len Length of the file data.
+    @return 0 on success, -1 on failure
+    @stability Evolving
+ */
+PUBLIC int ioUpload(cchar *path, uchar *buf, ssize len);
+
 #if SERVICES_DATABASE
 /**
     Restart the database
@@ -532,6 +515,31 @@ PUBLIC void ioRestartDb(void);
     @stability Evolving
  */
 PUBLIC void ioRestartWeb(void);
+#endif
+#if SERVICES_SHADOW
+/**
+    Get a value from the shadow state.
+    @param key Property key value. May contain dots.
+    @param defaultValue Default value to return if the key is not found
+    @return Returns an allocated string. Caller must free.
+    @stability Evolving
+ */
+PUBLIC char *ioGetShadow(cchar *key, cchar *defaultValue);
+
+/**
+    Set a key value in the shadow
+    @param key Property key value. May contain dots.
+    @param value Value to set.
+    @param save Set to true to persist immediately.
+    @stability Evolving
+ */
+PUBLIC void ioSetShadow(cchar *key, cchar *value, bool save);
+
+/**
+    Save the shadow state immediately.
+    @stability Evolving
+ */
+PUBLIC void ioSaveShadow(void);
 #endif
 
 /********************************* MQTT Extensions *****************************/
@@ -666,7 +674,6 @@ PUBLIC void webLogoutUser(Web *web);
 #define IO_LOG_MAX_SIZE   32767                     /**< Max size of log events to buffer */
 #define IO_LOG_LINGER     5000                      /**< Delay before flushing log events to the cloud */
 #define IO_SAVE_DELAY     5000                      /**< Delay before saving updated shadow state */
-
 
 /************************************* AI **************************************/
 /**
@@ -857,7 +864,6 @@ PUBLIC Ticks cronUntil(cchar *spec, Time when);
 #define IOTO_PROD    0          /**< Configure trace for production (minimal) */
 #define IOTO_VERBOSE 1          /**< Configure trace for development with verbose output */
 #define IOTO_DEBUG   2          /**< Configure debug trace for development with very verbose output */
-
 
 /**
     Initialize the Ioto runtime
