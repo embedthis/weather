@@ -15,6 +15,10 @@ device.db
 images/
 ioto/.env
 ioto/certs
+!ioto/certs/aws.crt
+!ioto/certs/roots.crt
+!ioto/certs/*.ans
+!ioto/certs/*.conf
 ioto/build
 ioto/demo
 ioto/state
