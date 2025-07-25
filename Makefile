@@ -21,6 +21,9 @@ all: build
 
 build: library prep config $(NAME)
 
+library:
+	@make APP=blank OPTIMIZE=$(OPTIMIZE) -C ioto 
+
 prep:
 	@if [ ! -d state ] ; then \
 		cp -r ioto/state ./state ; \
@@ -34,9 +37,6 @@ prep:
 
 $(NAME): $(NAME).c ioto/build/bin/libioto.a
 	cc -o $(NAME) $(NAME).c $(CFLAGS)
-
-library:
-	@make APP=blank OPTIMIZE=$(OPTIMIZE) -C ioto 
 
 config:
 	@cp config/ioto.json5 state/config/ioto.json5
