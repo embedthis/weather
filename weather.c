@@ -66,7 +66,7 @@ static void demo(void *arg)
     //  Watch for changes to the city (from the UI)
     rWatch("db:sync:Store", (RWatchProc) changeCity, 0);
 
-    for (int i = 0; i < 500 && ioIsConnected(); i++) {
+    for (int i = 0; i < 720 && ioIsConnected(); i++) {
         getWeather(city, lat, lon);
         rInfo("weather", "Sleeping for 10 seconds");
         rSleep(10 * TPS);
