@@ -10,7 +10,7 @@ The app captures user input to select the desired city.
 
 ## Video
 
-[![Watch the video](https://img.youtube.com/vi/eIG5z-DcrIo/hqdefault.jpg)](https://youtu.be/eIG5z-DcrIo)
+[![Watch the video](https://img.youtube.com/vi/8xcbjK9-VwU/hqdefault.jpg)](https://youtu.be/8xcbjK9-VwU)
 
 ## Ioto Documentation
 
