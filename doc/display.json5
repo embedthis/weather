@@ -1,0 +1,778 @@
+{
+    name: 'Standard',
+    version: '1.8.1',
+    format: '1.2.0',
+    roles: null,
+    displays: [
+        {
+            expression: 'true',
+            name: 'Default',
+            title: 'Weather',
+            description: 'Device App',
+            features: {
+                auth: {
+                    forgot: true,
+                    login: true,
+                    register: true,
+                },
+                cloud: {
+                    enable: true,
+                },
+                dash: {
+                    actions: true,
+                    edit: true,
+                    enable: true,
+                    database: true,
+                    metrics: true,
+                    multiple: true,
+                    responsive: true,
+                },
+                nav: {
+                    navbar: true,
+                    sidebar: true,
+                    sidebarHide: false,
+                    cookies: false,
+                    doc: false,
+                    help: false,
+                    alerts: true,
+                    dark: true,
+                    login: true,
+                    profile: true,
+                    settings: true,
+                },
+                widget: {
+                    actions: true,
+                    multiCloud: true,
+                },
+            },
+            timeouts: {
+                dashboard: 60,
+                http: 30,
+                nav: 60,
+                progress: 10,
+                session: 86400,
+            },
+            views: [
+                {
+                    path: '/',
+                    name: 'home',
+                    menu: 'Home',
+                    icon: '$home',
+                    role: 'user',
+                    component: 'Home',
+                    views: [
+                        {
+                            path: '/designer',
+                            menu: 'Designer',
+                            icon: '$dashboard',
+                            redirect: '/designer/displays',
+                            role: 'owner',
+                            tabs: [],
+                            views: [
+                                {
+                                    path: '/designer/displays',
+                                    title: 'Displays',
+                                    component: 'DisplayList',
+                                },
+                                {
+                                    path: '/designer/pages',
+                                    title: 'App Pages',
+                                    component: 'PageList',
+                                    views: [
+                                        {
+                                            path: '/designer/pages/editor',
+                                            name: 'page-editor',
+                                            title: 'Page Designer',
+                                            component: 'Page',
+                                        },
+                                    ],
+                                },
+                                {
+                                    path: '/designer/features',
+                                    title: 'App Features',
+                                    component: 'FeatureEdit',
+                                },
+                                {
+                                    path: '/designer/assets',
+                                    title: 'App Assets',
+                                    component: 'AssetEdit',
+                                },
+                            ],
+                        },
+                        {
+                            path: '/devices',
+                            menu: 'Devices',
+                            icon: '$devices',
+                            component: 'DeviceList',
+                            tabs: [],
+                            table: {
+                                model: 'Device',
+                                title: 'Devices',
+                                subtitle: 'Click on a device to explore',
+                                fields: [
+                                    {
+                                        name: 'edit',
+                                        icon: '$edit',
+                                    },
+                                    {
+                                        name: 'select',
+                                        icon: '$click',
+                                    },
+                                    {
+                                        name: 'id',
+                                        title: 'Device ID',
+                                    },
+                                    {
+                                        name: 'model',
+                                    },
+                                    {
+                                        name: 'description',
+                                        style: 'max-width: 400px; text-overflow: ellipsis;',
+                                    },
+                                    {
+                                        name: 'created',
+                                        title: 'Made',
+                                    },
+                                    {
+                                        name: 'product',
+                                    },
+                                    {
+                                        name: 'updated',
+                                    },
+                                    {
+                                        name: '*',
+                                        launch: '/dashboard',
+                                    },
+                                ],
+                                actions: {
+                                    claim: {
+                                        count: 0,
+                                        launch: 'claim',
+                                    },
+                                    release: {
+                                        count: 2,
+                                        invoke: 'DeviceReleaseAction',
+                                        confirm: true,
+                                    },
+                                },
+                            },
+                            panels: [
+                                {
+                                    name: 'claim',
+                                    component: 'DeviceClaim',
+                                    button: 'Claim Device',
+                                    width: '500px',
+                                    role: 'admin',
+                                },
+                                {
+                                    name: 'edit',
+                                    component: 'GenericEdit',
+                                    width: '500px',
+                                    role: 'admin',
+                                },
+                            ],
+                        },
+                        {
+                            path: '/tables',
+                            title: 'Device Tables',
+                            menu: 'Device Data',
+                            icon: '$grid',
+                            component: 'GenericTable',
+                            enable: 'deviceId == /.+/',
+                            table: {
+                                title: 'Device Data',
+                                model: '_Tables_',
+                                subtitle: 'Click on a table to display device data',
+                                fields: [
+                                    {
+                                        name: 'name',
+                                    },
+                                    {
+                                        name: '*',
+                                        launch: '/tables/:table',
+                                    },
+                                ],
+                            },
+                            actions: {},
+                            tabs: [],
+                            views: [
+                                {
+                                    path: '/tables/:table',
+                                    name: 'Table',
+                                    title: ':table Table',
+                                    component: 'GenericTable',
+                                    tables: {
+                                        Broadcast: {
+                                            model: 'Broadcast',
+                                            editable: true,
+                                            actions: {
+                                                add: {
+                                                    count: 0,
+                                                    launch: 'edit',
+                                                },
+                                                edit: {
+                                                    count: 1,
+                                                    launch: 'edit',
+                                                },
+                                                delete: {
+                                                    count: 2,
+                                                    launch: 'edit',
+                                                },
+                                            },
+                                            fields: [
+                                                {
+                                                    name: 'accountId',
+                                                    disabled: true,
+                                                    desktop: true,
+                                                },
+                                                {
+                                                    name: 'deviceId',
+                                                    disabled: true,
+                                                },
+                                                {
+                                                    name: 'key',
+                                                },
+                                                {
+                                                    name: 'value',
+                                                },
+                                                {
+                                                    name: 'type',
+                                                },
+                                                {
+                                                    name: 'updated',
+                                                    type: 'date',
+                                                    desktop: true,
+                                                },
+                                                {
+                                                    name: 'expires',
+                                                    type: 'date',
+                                                },
+                                            ],
+                                        },
+                                        Command: {
+                                            model: 'Command',
+                                            editable: true,
+                                            actions: {
+                                                add: {
+                                                    count: 0,
+                                                    launch: 'edit',
+                                                },
+                                                edit: {
+                                                    count: 1,
+                                                    launch: 'edit',
+                                                },
+                                                delete: {
+                                                    count: 2,
+                                                    launch: 'edit',
+                                                },
+                                            },
+                                            fields: [
+                                                {
+                                                    name: 'accountId',
+                                                    disabled: true,
+                                                    desktop: true,
+                                                },
+                                                {
+                                                    name: 'deviceId',
+                                                    disabled: true,
+                                                },
+                                                {
+                                                    name: 'description',
+                                                },
+                                                {
+                                                    name: 'command',
+                                                },
+                                                {
+                                                    name: 'args',
+                                                    type: 'object',
+                                                    desktop: true,
+                                                },
+                                                {
+                                                    name: 'updated',
+                                                    type: 'date',
+                                                    desktop: true,
+                                                },
+                                                {
+                                                    name: 'expires',
+                                                    type: 'date',
+                                                },
+                                            ],
+                                        },
+                                        Device: {
+                                            model: 'Device',
+                                            editable: true,
+                                            actions: {
+                                                edit: {
+                                                    count: 1,
+                                                    launch: 'edit',
+                                                },
+                                                delete: {
+                                                    count: 2,
+                                                    launch: 'edit',
+                                                },
+                                            },
+                                            fields: [
+                                                {
+                                                    name: 'id',
+                                                },
+                                                {
+                                                    name: 'name',
+                                                },
+                                                {
+                                                    name: 'model',
+                                                    desktop: true,
+                                                },
+                                                {
+                                                    name: 'product',
+                                                    desktop: true,
+                                                },
+                                                {
+                                                    name: 'connection',
+                                                },
+                                                {
+                                                    name: 'description',
+                                                    desktop: true,
+                                                },
+                                                {
+                                                    name: 'state',
+                                                    desktop: true,
+                                                },
+                                                {
+                                                    name: 'expires',
+                                                    type: 'date',
+                                                    desktop: true,
+                                                },
+                                                {
+                                                    name: 'updated',
+                                                    type: 'date',
+                                                    desktop: true,
+                                                },
+                                            ],
+                                        },
+                                        Log: {
+                                            model: 'Log',
+                                            editable: true,
+                                            actions: {
+                                                edit: {
+                                                    count: 1,
+                                                    launch: 'edit',
+                                                },
+                                                delete: {
+                                                    count: 2,
+                                                    launch: 'edit',
+                                                },
+                                            },
+                                            fields: [
+                                                {
+                                                    name: 'deviceId',
+                                                },
+                                                {
+                                                    name: 'message',
+                                                },
+                                                {
+                                                    name: 'context',
+                                                    desktop: true,
+                                                },
+                                                {
+                                                    name: 'id',
+                                                    desktop: true,
+                                                },
+                                                {
+                                                    name: 'updated',
+                                                    desktop: true,
+                                                },
+                                            ],
+                                        },
+                                        Store: {
+                                            model: 'Store',
+                                            editable: true,
+                                            actions: {
+                                                add: {
+                                                    count: 0,
+                                                    launch: 'edit',
+                                                },
+                                                edit: {
+                                                    count: 1,
+                                                    launch: 'edit',
+                                                },
+                                                delete: {
+                                                    count: 2,
+                                                    launch: 'edit',
+                                                },
+                                            },
+                                            fields: [
+                                                {
+                                                    name: 'deviceId',
+                                                },
+                                                {
+                                                    name: 'key',
+                                                },
+                                                {
+                                                    name: 'value',
+                                                    type: 'object',
+                                                },
+                                                {
+                                                    name: 'type',
+                                                },
+                                                {
+                                                    name: 'expires',
+                                                    type: 'date',
+                                                    desktop: true,
+                                                },
+                                                {
+                                                    name: 'updated',
+                                                    type: 'date',
+                                                    desktop: true,
+                                                },
+                                            ],
+                                        },
+                                    },
+                                    panels: [
+                                        {
+                                            name: 'edit',
+                                            component: 'GenericEdit',
+                                            width: '500px',
+                                            properties: {
+                                                Broadcast: {
+                                                    fields: [
+                                                        'accountId',
+                                                        'deviceId',
+                                                        'key',
+                                                        'value',
+                                                        'type',
+                                                        'expires',
+                                                    ],
+                                                },
+                                                Store: {
+                                                    fields: [
+                                                        'deviceId',
+                                                        'key',
+                                                        'value',
+                                                        'type',
+                                                        'expires',
+                                                    ],
+                                                },
+                                                Command: {
+                                                    fields: [
+                                                        'accountId',
+                                                        'deviceId',
+                                                        'description',
+                                                        'command',
+                                                        'args',
+                                                        'expires',
+                                                    ],
+                                                },
+                                                Device: {
+                                                    fields: [
+                                                        'name',
+                                                        'model',
+                                                        'product',
+                                                        'description',
+                                                        'updated',
+                                                    ],
+                                                },
+                                                Log: {
+                                                    fields: [
+                                                        'deviceId',
+                                                        'message',
+                                                        'context',
+                                                        'id',
+                                                        'updated',
+                                                    ],
+                                                },
+                                            },
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
+                        {
+                            path: '/account',
+                            icon: '$account',
+                            redirect: '/account/profile',
+                            menu: 'Account',
+                            tabs: [],
+                            views: [
+                                {
+                                    path: '/account/profile',
+                                    component: 'UserProfile',
+                                },
+                                {
+                                    path: '/account/password',
+                                    component: 'UserPassword',
+                                },
+                                {
+                                    path: '/account/settings',
+                                    component: 'AccountSettings',
+                                    role: 'admin',
+                                },
+                                {
+                                    path: '/account/users',
+                                    component: 'UserList',
+                                    role: 'admin',
+                                },
+                            ],
+                        },
+                        {
+                            path: '/login',
+                            component: 'Login',
+                            role: null,
+                        },
+                        {
+                            path: '/logout',
+                            icon: '$leftArrow',
+                            menu: 'Log Out',
+                            component: 'Logout',
+                            properties: '{}',
+                            role: null,
+                        },
+                        {
+                            path: '/claim',
+                            name: 'claim',
+                            component: 'DeviceClaim',
+                            properties: {
+                                standalone: true,
+                            },
+                        },
+                    ],
+                    properties: '{}',
+                    board: {
+                        css: [],
+                        fixed: true,
+                        framed: false,
+                        layout: 'exact',
+                        live: true,
+                        range: {
+                            period: 86400,
+                            anchor: 'relative',
+                            refresh: 60,
+                            timezone: 'local',
+                        },
+                        refresh: 60,
+                        toolbar: true,
+                        type: 'page',
+                        widgetCss: [],
+                        widgets: [
+                            {
+                                anchor: {},
+                                cloudId: '01JY8ATBVEFTWRWN8BYQ73ZK6A',
+                                css: [
+                                    {
+                                        name: 'background',
+                                        value: 'transparent',
+                                    },
+                                    {
+                                        name: 'content.font-size',
+                                        value: '36px',
+                                    },
+                                    {
+                                        name: 'suffix.font-size',
+                                        value: '20px',
+                                    },
+                                ],
+                                dimensions: {
+                                    Device: '${deviceId}',
+                                },
+                                header: 'Temperature',
+                                height: '206',
+                                id: '46157719fb4401d6b6218da959bf5132',
+                                icon: '$thermometer',
+                                left: '0',
+                                metric: '/city/${city}/temp',
+                                namespace: 'Embedthis/Device',
+                                range: {},
+                                statistic: 'current',
+                                top: '245',
+                                type: 'info',
+                                width: '0.9812538612026359',
+                                z: 13,
+                            },
+                            {
+                                anchor: {},
+                                cloudId: '01JY8ATBVEFTWRWN8BYQ73ZK6A',
+                                css: [
+                                    {
+                                        name: 'border',
+                                        value: 'solid 1px #444',
+                                    },
+                                    {
+                                        name: '!dark:border',
+                                        value: 'solid 1px #666',
+                                    },
+                                ],
+                                dimensions: {
+                                    Device: '${deviceId}',
+                                },
+                                header: 'History',
+                                height: '200',
+                                id: 'b5f81d850bdd7cfd90d28b1de5995131',
+                                left: '0',
+                                metric: '/city/${city}/temp',
+                                namespace: 'Embedthis/Device',
+                                range: {},
+                                statistic: 'current',
+                                top: '470',
+                                type: 'graph',
+                                width: '0.9809519129979035',
+                                z: 11,
+                            },
+                            {
+                                actions: [
+                                    {
+                                        type: 'action',
+                                        target: 'WeatherUpdate',
+                                    },
+                                ],
+                                anchor: {},
+                                cloudId: '01JY8ATBVEFTWRWN8BYQ73ZK6A',
+                                css: [
+                                    {
+                                        name: 'background',
+                                        value: 'transparent',
+                                    },
+                                ],
+                                defaultValue: 'Melbourne',
+                                dimensions: {
+                                    key: 'city',
+                                },
+                                field: 'value',
+                                height: '60',
+                                id: '45c19c4ea8b4a441949a4212dca436ba',
+                                input: 'select',
+                                items: "['Paris', 'Seattle', 'Melbourne']",
+                                label: 'City',
+                                left: '0',
+                                model: 'Store',
+                                namespace: 'Database',
+                                placeholder: 'Select City',
+                                range: {},
+                                top: '0',
+                                type: 'input',
+                                width: '0.9851446442533233',
+                                z: 0,
+                            },
+                            {
+                                anchor: {
+                                    vertical: 'None',
+                                    horizontal: 'None',
+                                },
+                                cloudId: '01JY8ATBVEFTWRWN8BYQ73ZK6A',
+                                css: [
+                                    {
+                                        name: 'background',
+                                        value: 'transparent',
+                                    },
+                                    {
+                                        name: 'header.font-size',
+                                        value: '48px',
+                                    },
+                                    {
+                                        name: 'header.text-transform',
+                                        value: 'uppercase',
+                                    },
+                                    {
+                                        name: 'header.text-shadow',
+                                        value: '1px 1px #404040',
+                                    },
+                                    {
+                                        name: 'header.font-weight',
+                                        value: 'bold',
+                                    },
+                                    {
+                                        name: 'object-fit',
+                                        value: 'fill',
+                                    },
+                                ],
+                                defaultValue: '',
+                                dimensions: {
+                                    key: '/city/${city}/outlook',
+                                },
+                                field: 'value',
+                                header: '${value}',
+                                height: '156',
+                                id: '133534e9ce3c6ac6884fdbae85a464dd',
+                                left: '0',
+                                model: 'Store',
+                                namespace: 'Database',
+                                range: {},
+                                top: '72',
+                                type: 'image',
+                                url: '/theme/t-${value}.avif',
+                                width: '0.9809519129979035',
+                                z: 9,
+                            },
+                        ],
+                    },
+                    title: 'Home',
+                },
+            ],
+            select: false,
+            theme: {
+                dark: {
+                    mode: 'dark',
+                    logo: 'theme/logo.png',
+                    colors: {
+                        background: '#111217',
+                        surface: '#26272B',
+                        primary: '#3F51B5',
+                        secondary: "#555555",
+                        accent: '#82B1FF',
+                        error: '#FB6D6D',
+                        info: '#2196F3',
+                        success: '#4CAF50',
+                        warning: '#FB8C00',
+                        border: "#606060",
+                        navbar: "primary",
+                        sidebar: "surface",
+                        text: "#DEDEDE",
+                        'surface-variant': '#666666',
+                        'background-lighten-1': '#080808',
+                        'text-lighten-1': '#808080',
+                        'border-lighten-1': '#444444',
+                    },
+                    variables: {
+                        'font-size': '15px',
+                    },
+                    formats: {
+                        mstime: 'mmm d, H:MM:ss:l',
+                        time: 'mmm d, HH:MM:ss',
+                        fulltime: 'ddd d mmm h:MM:ss tt',
+                        date: 'mmm d, yyyy',
+                    },
+                },
+                light: {
+                    mode: 'light',
+                    logo: 'theme/logo.png',
+                    colors: {
+                        background: '#F7F7F7',
+                        surface: '#FFFFFF',
+                        primary: '#3F51B5',
+                        secondary: '#DDDDDD',
+                        accent: '#82B1FF',
+                        error: '#FB6D6D',
+                        info: '#2196F3',
+                        success: '#4CAF50',
+                        warning: '#FB8C00',
+                        border: "#CCCCCC",
+                        navbar: "primary",
+                        sidebar: "surface",
+                        text: "#484848",
+                        'surface-variant': '#E2E2E2',
+                        'background-lighten-1': '#F0F0F0',
+                        'text-lighten-1': '#A0A0A0',
+                        'border-lighten-1': '#DDDDDD',
+                    },
+                    variables: {
+                        'font-size': '15px',
+                    },
+                    formats: {
+                        mstime: 'mmm d, H:MM:ss:l',
+                        time: 'mmm d, HH:MM:ss',
+                        fulltime: 'ddd d mmm h:MM:ss tt',
+                        date: 'mmm d, yyyy',
+                    },
+                },
+            },
+        },
+    ],
+}
