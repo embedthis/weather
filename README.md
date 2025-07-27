@@ -8,6 +8,10 @@ The app captures user input to select the desired city.
 
 <img src="https://github.com/embedthis/weather/blob/main/doc/weather-app.avif" width="300" alt="Weather App">
 
+## Video
+
+[![Watch the video](https://img.youtube.com/vi/eIG5z-DcrIo/hqdefault.jpg)](https://youtu.be/eIG5z-DcrIo)
+
 ## Ioto Documentation
 
 Read the [Ioto READMEs](./ioto/README.md) for more details about Ioto.
