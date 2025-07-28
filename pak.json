@@ -1,0 +1,25 @@
+{
+    "name": "weather",
+    "title": "Weather",
+    "description": "Ioto Weather Sample App",
+    "version": "1.0.0",
+    "keywords": [
+        "ioto",
+        "Embedthis"
+    ],
+    "homepage": "https://www.embedthis.com/",
+    "author": {
+        "name": "Embedthis Software.",
+        "email": "dev@embedthis.com",
+        "url": "https://www.embedthis.com/"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git://github.com/embedthis/weather.git"
+    },
+    "bugs": {
+        "email": "dev@embedthis.com",
+        "url": "http://github.com/embedthis/weather/issues"
+    },
+    "license": "Commercial"
+}
