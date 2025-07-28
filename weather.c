@@ -15,8 +15,8 @@ static void changeCity(void *arg, Json *json);
 static int getLatLon(cchar *city, double *lat, double *lon);
 static void getWeather(cchar *city, double lat, double lon);
 
-static char *city;
-static double lat, lon;
+static char *city, *newCity;
+static double lat = -1, lon = -1;
 
 int main(int argc, char **argv)
 {
@@ -50,7 +50,7 @@ int main(int argc, char **argv)
 }
 
 /*
-    Run the demo. Loops up to 500 times updating the weather every 10 seconds
+    Run the demo. Loops updating the weather every 10 seconds
     Called when the device is connected to the cloud
  */
 static void demo(void *arg)
@@ -61,12 +61,19 @@ static void demo(void *arg)
         city = sclone("Melbourne");
         ioSet("city", city);
     }
-    getLatLon(city, &lat, &lon);
-
     //  Watch for changes to the city (from the UI)
     rWatch("db:sync:Store", (RWatchProc) changeCity, 0);
 
     for (int i = 0; i < 720 && ioIsConnected(); i++) {
+        if (newCity && !smatch(newCity, city)) {
+            rFree(city);
+            city = sclone(newCity);
+            rInfo("weather", "ChangeCity %s (lat %g lon %g)", city, lat, lon);
+            lat = lon = -1;
+        }
+        if (lat < 0 || lon < 0) {
+            getLatLon(city, &lat, &lon);
+        }
         getWeather(city, lat, lon);
         rInfo("weather", "Sleeping for 10 seconds");
         rSleep(10 * TPS);
@@ -142,22 +149,18 @@ static void getWeather(cchar *city, double lat, double lon)
  */
 static void changeCity(void *arg, Json *json)
 {
-    cchar  *key, *newCity;
+    cchar  *key, *value;
 
     key = jsonGet(json, 0, "key", 0);
     if (!smatch(key, "city")) {
         return;
     }
-    newCity = jsonGet(json, 0, "value", 0);
-    if (!newCity || !*newCity) {
+    value = jsonGet(json, 0, "value", 0);
+    if (!value || !*value) {
         rInfo("weather", "Change city is null");
         return;
     }
-    // getLatLong may yield, so assign to lat/lon before resetting city
-    getLatLon(newCity, &lat, &lon);
-    rFree(city);
-    city = sclone(newCity);
-    rInfo("weather", "ChangeCity %s (lat %g lon %g)", city, lat, lon);
+    newCity = sclone(value);
 }
 
 /*

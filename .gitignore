@@ -14,6 +14,7 @@ device.db.sync
 device.db
 images/
 ioto/.env
+ioto/bin/json
 ioto/certs/*
 !ioto/certs/aws.crt
 !ioto/certs/roots.crt
