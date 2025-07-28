@@ -5,9 +5,6 @@
     the temperature and weather code for a given city. It uses the geocoding-api.open-meteo.com API to
     get the latitude and longitude of the city.
 
-    To run this app, you will need an OpenAI API key. You can get one from https://platform.openai.com/account/api-keys.
-    Set your OpenAI API key in the OPENAI_API_KEY environment variable.
-
     This file is linked with the Ioto device agent library. To keep it simple, this app has little error checking.
  */
 
