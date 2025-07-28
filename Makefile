@@ -19,7 +19,7 @@ endif
 
 all: build
 
-build: library prep config $(NAME)
+build: library prep config $(NAME) assets.zip
 
 library:
 	@make APP=blank OPTIMIZE=$(OPTIMIZE) -C ioto 
@@ -57,7 +57,7 @@ update:
 	mv ioto-?.?.? ioto
 	make -C ioto clean
 
-assets:
+assets.zip: theme/*
 	rm -f assets.zip
 	zip -R assets.zip theme/*
 
