@@ -59,7 +59,7 @@
                     menu: 'Home',
                     icon: '$home',
                     role: 'user',
-                    component: 'Home',
+                    component: 'Page',
                     views: [
                         {
                             path: '/designer',

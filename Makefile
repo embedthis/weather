@@ -15,6 +15,10 @@ PATH 			:= $(PATH):/opt/homebrew/bin
 export 			PATH
 endif
 
+ifndef SHOW
+.SILENT:
+endif
+
 .PHONY: config library prep
 
 all: build
