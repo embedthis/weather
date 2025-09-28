@@ -40,7 +40,7 @@ PUBLIC bool webAuthenticate(Web *web)
 
     if (web->cookie && webGetSession(web, 0) != 0) {
         /*
-            Review Acceptable: Retrieve authentication state from the session storage.
+            SECURITY Acceptable:: Retrieve authentication state from the session storage.
             Faster than re-authenticating.
          */
         if ((web->username = webGetSessionVar(web, WEB_SESSION_USERNAME, 0)) != 0) {
@@ -126,8 +126,6 @@ PUBLIC bool webLogin(Web *web, cchar *username, cchar *role)
 
     web->username = webSetSessionVar(web, WEB_SESSION_USERNAME, username);
     web->role = webSetSessionVar(web, WEB_SESSION_ROLE, role);
-
-    rTrace("auth", "Login successful for %s, role %s", username, role);
     return 1;
 }
 
@@ -186,19 +184,19 @@ PUBLIC int webFileHandler(Web *web)
     char     *path;
     int      rc;
 
-    // Review Acceptable: the path is already validated and normalized in webValidateRequest / webNormalizePath
+    // SECURITY Acceptable:: the path is already validated and normalized in webValidateRequest / webNormalizePath
     path = sjoin(webGetDocs(web->host), web->path, NULL);
 
     web->exists = stat(path, &info) == 0;
     web->ext = strrchr(path, '.');
 
-    if (smatch(web->method, "GET") || smatch(web->method, "HEAD") || smatch(web->method, "POST")) {
+    if (web->get || web->head || web->post) {
         rc = getFile(web, path, &info);
 
-    } else if (smatch(web->method, "PUT")) {
+    } else if (web->put) {
         rc = putFile(web, path);
 
-    } else if (smatch(web->method, "DELETE")) {
+    } else if (web->del) {
         rc = deleteFile(web, path);
 
     } else {
@@ -211,8 +209,8 @@ PUBLIC int webFileHandler(Web *web)
 
 static int getFile(Web *web, cchar *path, FileInfo *info)
 {
-    char  date[32], *lpath;
-    int   fd;
+    char date[32], *lpath;
+    int  fd;
 
     if (!web->exists) {
         webHook(web, WEB_HOOK_NOT_FOUND);
@@ -252,7 +250,7 @@ static int getFile(Web *web, cchar *path, FileInfo *info)
     //  ETag is a hash of the file's inode, size and last modified time.
     webAddHeader(web, "ETag", "\"%Ld\"", (uint64) info->st_ino ^ (uint64) info->st_size ^ (uint64) info->st_mtime);
 
-    if (smatch(web->method, "HEAD")) {
+    if (web->head) {
         webFinalize(web);
         close(fd);
         rFree(lpath);
@@ -407,12 +405,13 @@ PUBLIC WebHost *webAllocHost(Json *config, int flags)
     host->webs = rAllocList(0, 0);
 
     if (!config) {
-        if ((config = jsonParseFile(ME_WEB_CONFIG, &errorMsg, JSON_LOCK)) == 0) {
+        if ((config = jsonParseFile(ME_WEB_CONFIG, &errorMsg, 0)) == 0) {
             rError("config", "%s", errorMsg);
             rFree(errorMsg);
             rFree(host);
             return 0;
         }
+        jsonLock(config);
         host->freeConfig = 1;
     }
     host->config = config;
@@ -438,19 +437,20 @@ PUBLIC WebHost *webAllocHost(Json *config, int flags)
 
 #if ME_WEB_LIMITS
     host->maxBuffer = svalue(jsonGet(host->config, 0, "web.limits.buffer", "64K"));
-    host->maxHeader = svalue(jsonGet(host->config, 0, "web.limits.header", "10K"));
-    host->maxConnections = svalue(jsonGet(host->config, 0, "web.limits.connections", "100"));
     host->maxBody = svalue(jsonGet(host->config, 0, "web.limits.body", "100K"));
+    host->maxConnections = svalue(jsonGet(host->config, 0, "web.limits.connections", "100"));
+    host->maxHeader = svalue(jsonGet(host->config, 0, "web.limits.header", "10K"));
     host->maxSessions = svalue(jsonGet(host->config, 0, "web.limits.sessions", "20"));
     host->maxUpload = svalue(jsonGet(host->config, 0, "web.limits.upload", "20MB"));
-    host->maxUploads = svalue(jsonGet(host->config, 0, "web.limits.uploads", "128"));
+    host->maxUploads = svalue(jsonGet(host->config, 0, "web.limits.uploads", "0"));
 #endif
 
     host->docs = rGetFilePath(jsonGet(host->config, 0, "web.documents", "@site"));
     host->name = jsonGet(host->config, 0, "web.name", 0);
     host->uploadDir = jsonGet(host->config, 0, "web.upload.dir", uploadDir());
+    host->sessionCookie = jsonGet(host->config, 0, "web.sessions.cookie", WEB_SESSION_COOKIE);
     host->sameSite = jsonGet(host->config, 0, "web.sessions.sameSite", "Lax");
-    host->httpOnly = jsonGetBool(host->config, 0, "web.sessions.httpOnly", 0);
+    host->httpOnly = jsonGetBool(host->config, 0, "web.sessions.httpOnly", 1);
     host->roles = jsonGetId(host->config, 0, "web.auth.roles");
     host->headers = jsonGetId(host->config, 0, "web.headers");
 
@@ -516,7 +516,6 @@ PUBLIC void webFreeHost(WebHost *host)
         webFreeSession(np->value);
     }
     rFreeHash(host->sessions);
-
     rFreeHash(host->mimeTypes);
     if (host->freeConfig) {
         jsonFree(host->config);
@@ -733,7 +732,7 @@ static RHash *createMethodsHash(cchar *list)
     methods = sclone(list);
     hash = rAllocHash(0, R_TEMPORAL_NAME);
     for (method = stok(methods, " \t,", &tok); method; method = stok(NULL, " \t,", &tok)) {
-        method = strim(method, "\"", R_TRIM_BOTH);
+        method = strim(method, "'\"", R_TRIM_BOTH);
         rAddName(hash, method, "true", 0);
     }
     rFree(methods);
@@ -847,8 +846,10 @@ static void initRoutes(WebHost *host)
             rp->handler = jsonGet(json, id, "handler", "file");
             rp->stream = jsonGetBool(json, id, "stream", 0);
             rp->validate = jsonGetBool(json, id, "validate", 0);
+            rp->xsrf = jsonGetBool(json, id, "xsrf", 0);
 
             if ((methods = jsonToString(json, id, "methods", 0)) != 0) {
+                // Trim leading and trailing brackets
                 methods[slen(methods) - 1] = '\0';
                 rp->methods = createMethodsHash(&methods[1]);
                 rFree(methods);
@@ -964,6 +965,7 @@ static void initWeb(Web *web, WebListen *listen, RSocket *sock, RBuf *rx, int cl
 static int handleRequest(Web *web);
 static bool matchFrom(Web *web, cchar *from);
 static int parseHeaders(Web *web, ssize headerSize);
+static void parseMethod(Web *web);
 static int processBody(Web *web);
 static void processOptions(Web *web);
 static void processRequests(Web *web);
@@ -988,7 +990,7 @@ PUBLIC int webAlloc(WebListen *listen, RSocket *sock)
 
     host = listen->host;
 
-    if (++host->connections > host->maxConnections) {
+    if (host->connections >= host->maxConnections) {
         rTrace("web", "Too many connections %d/%d", (int) host->connections, (int) host->maxConnections);
         rFreeSocket(sock);
         return R_ERR_WONT_FIT;
@@ -996,6 +998,7 @@ PUBLIC int webAlloc(WebListen *listen, RSocket *sock)
     if ((web = rAllocType(Web)) == 0) {
         return R_ERR_MEMORY;
     }
+    host->connections++;
     web->conn = conn++;
     initWeb(web, listen, sock, 0, 0);
     rAddItem(host->webs, web);
@@ -1075,13 +1078,13 @@ static void freeWebFields(Web *web, bool keepAlive)
     rFreeBuf(web->buffer);
     rFree(web->cookie);
     rFree(web->error);
-    rFree(web->redirect);
     rFree(web->path);
-    rFreeBuf(web->trace);
+    rFree(web->redirect);
+    rFree(web->securityToken);
+    // rFreeBuf(web->trace);
     rFreeBuf(web->rxHeaders);
     rFreeHash(web->txHeaders);
     jsonFree(web->qvars);
-    jsonFree(web->validatedJson);
     jsonFree(web->vars);
     webFreeUpload(web);
 
@@ -1182,7 +1185,7 @@ static int handleRequest(Web *web)
     route = web->route;
     handler = route->handler;
 
-    if (tolower(web->method[0]) == 'o' && scaselessmatch(web->method, "OPTIONS") && route->methods) {
+    if (web->options && route->methods) {
         processOptions(web);
         return 0;
     }
@@ -1204,7 +1207,7 @@ static int handleRequest(Web *web)
     }
     webUpdateDeadline(web);
 
-    if (route->validate && !validateRequest(web)) {
+    if (!validateRequest(web)) {
         return R_ERR_BAD_REQUEST;
     }
 
@@ -1216,6 +1219,21 @@ static int handleRequest(Web *web)
         // Return zero as a valid response has been generated
         return 0;
     }
+    if (web->route->xsrf) {
+        if (web->get) {
+            /*
+                This send the XSRF token to the client. It will generate a new XSRF token if there is
+                not one already in the session state.
+             */
+            webAddSecurityToken(web, 0);
+        } else if (!web->options && !web->head && !web->trace) {
+            if (!webCheckSecurityToken(web)) {
+                webError(web, 400, "Invalid XSRF token");
+                return R_ERR_BAD_REQUEST;
+            }
+        }
+    }
+
     /*
         Run standard handlers: action and file
      */
@@ -1238,20 +1256,26 @@ static bool validateRequest(Web *web)
 {
     WebHost *host;
     char    path[WEB_MAX_SIG];
-    ssize   len;
+    ssize   len, urlLen;
     char    *cp;
 
     assert(web);
     host = web->host;
 
     len = slen(web->route->match);
-    sncopy(path, sizeof(path), &web->url[len], slen(web->url) - len);
+    urlLen = slen(web->url);
+    if (urlLen < len) {
+        return 0;
+    }
+    sncopy(path, sizeof(path), &web->url[len], urlLen - len);
     for (cp = path; cp < &path[sizeof(path)] && *cp; cp++) {
         if (*cp == '/') *cp = '.';
     }
     if (host->signatures) {
         web->signature = jsonGetId(host->signatures, 0, path);
-        return webValidateRequest(web, path);
+        if (web->route->validate) {
+            return webValidateRequest(web, path);
+        }
     }
     return 1;
 }
@@ -1302,7 +1326,7 @@ static bool routeRequest(Web *web)
             if (route->redirect) {
                 webRedirect(web, 302, route->redirect);
 
-            } else if (route->role) {
+            } else if (route->role && !web->options) {
                 if (!webAuthenticate(web) || !webCan(web, route->role)) {
                     if (!smatch(route->role, "public")) {
                         webError(web, 401, "Access Denied. User not logged in or insufficient privilege.");
@@ -1366,7 +1390,7 @@ static bool matchFrom(Web *web, cchar *from)
             rc = 0;
         }
     }
-    if (path && !smatch(&web->path[1], path)) {
+    if (path && (slen(web->path) < 2 || !smatch(&web->path[1], path))) {
         //  Path does not contain leading "/"
         rc = 0;
     } else if (query && !smatch(web->query, query)) {
@@ -1399,6 +1423,8 @@ static int parseHeaders(Web *web, ssize headerSize)
         rLog("raw", "web", "Request <<<<\n\n%s\n", web->rxHeaders->start);
     }
     web->method = supper(stok(web->rxHeaders->start, " \t", &tok));
+    parseMethod(web);
+
     web->url = stok(tok, " \t", &tok);
     web->protocol = supper(stok(tok, "\r", &tok));
     web->scheme = rIsSocketSecure(web->sock) ? "https" : "http";
@@ -1426,6 +1452,54 @@ static int parseHeaders(Web *web, ssize headerSize)
     return 0;
 }
 
+static void parseMethod(Web *web)
+{
+    cchar *method;
+
+    method = web->method;
+
+    switch (method[0]) {
+    case 'D':
+        if (strcmp(method, "DELETE") == 0) {
+            web->del = 1;
+        }
+        break;
+
+    case 'G':
+        if (strcmp(method, "GET") == 0) {
+            web->get = 1;
+        }
+        break;
+
+    case 'H':
+        if (strcmp(method, "HEAD") == 0) {
+            web->head = 1;
+        }
+        break;
+
+    case 'O':
+        if (strcmp(method, "OPTIONS") == 0) {
+            web->options = 1;
+        }
+        break;
+
+    case 'P':
+        if (strcmp(method, "POST") == 0) {
+            web->post = 1;
+
+        } else if (strcmp(method, "PUT") == 0) {
+            web->put = 1;
+        }
+        break;
+
+    case 'T':
+        if (strcmp(method, "TRACE") == 0) {
+            web->trace = 1;
+        }
+        break;
+    }
+}
+
 /*
     Parse a headers block. Used here and by file upload.
  */
@@ -1434,6 +1508,7 @@ PUBLIC bool webParseHeadersBlock(Web *web, char *headers, ssize headersSize, boo
     struct tm tm;
     cchar     *end;
     char      c, *cp, *endKey, *key, *prior, *t, *value;
+    uchar     uc;
     bool      hasCL = 0, hasTE = 0;
 
     if (!headers || *headers == '\0') {
@@ -1480,10 +1555,15 @@ PUBLIC bool webParseHeadersBlock(Web *web, char *headers, ssize headersSize, boo
                 break;
             }
         }
+        /* 
+            From here, we've ensured the key and value are valid and do not contain any whitespace.
+            This prevents CRLF injection attacks in header values.
+        */
 
         //  Validate header name
         for (t = key; t < endKey; t++) {
-            if (*t >= sizeof(validHeaderChars) || !validHeaderChars[*t & 0x7f]) {
+            uc = (uchar) *t;
+            if (uc >= sizeof(validHeaderChars) || !validHeaderChars[uc]) {
                 return 0;
             }
         }
@@ -1520,6 +1600,10 @@ PUBLIC bool webParseHeadersBlock(Web *web, char *headers, ssize headersSize, boo
             } else if (scaselessmatch(key, "content-length")) {
                 hasCL = 1;
                 web->rxLen = web->rxRemaining = stoi(value);
+                if (web->rxLen < 0 || web->rxLen > web->host->maxBody) {
+                    webNetError(web, "Bad Content-Length");
+                    return 0;
+                }
 
             } else if (scaselessmatch(key, "cookie")) {
                 if (web->cookie) {
@@ -1658,6 +1742,10 @@ PUBLIC int webReadBody(Web *web)
  */
 static int processBody(Web *web)
 {
+    /*
+        SECURITY Acceptable: - This logging is only enabled for testing and development,
+        and is an acceptable risk to use getenv here to modify log level
+     */
     if (web->host->flags & WEB_SHOW_REQ_BODY && rGetBufLength(web->body)) {
         rLog("raw", "web", "Request Body <<<<\n\n%s\n\n", rBufToString(web->body));
     }
@@ -1666,7 +1754,7 @@ static int processBody(Web *web)
             return webError(web, 400, "JSON body is malformed");
         }
     } else if (web->formBody) {
-        web->vars = jsonAlloc(0);
+        web->vars = jsonAlloc();
         webParseForm(web);
     }
     return 0;
@@ -1674,7 +1762,7 @@ static int processBody(Web *web)
 
 static void processQuery(Web *web)
 {
-    web->qvars = jsonAlloc(0);
+    web->qvars = jsonAlloc();
     webParseQuery(web);
 }
 
@@ -1728,8 +1816,9 @@ PUBLIC void webUpdateDeadline(Web *web)
 PUBLIC void webBuffer(Web *web, ssize size)
 {
     if (size <= 0) {
-        size = web->host->maxBuffer;
+        size = ME_BUFSIZE;
     }
+    size = max(size, web->host->maxBuffer);
     if (web->buffer) {
         if (rGetBufSize(web->buffer) < size) {
             rGrowBuf(web->buffer, size);
@@ -2081,6 +2170,9 @@ PUBLIC ssize webWriteHeaders(Web *web)
     if (web->mime) {
         webAddHeaderStaticString(web, "Content-Type", web->mime);
     }
+    if (smatch(rLookupName(web->txHeaders, "Access-Control-Allow-Origin"), "dynamic") == 0) {
+        webAddAccessControlHeader(web);
+    }
 
     /*
         Emit HTTP response line
@@ -2147,12 +2239,12 @@ PUBLIC void webAddHeader(Web *web, cchar *key, cchar *fmt, ...)
 
 PUBLIC void webAddHeaderDynamicString(Web *web, cchar *key, char *value)
 {
-    rAddName(getTxHeaders(web), key, value, R_DYNAMIC_VALUE);
+    rAddDuplicateName(getTxHeaders(web), key, value, R_DYNAMIC_VALUE);
 }
 
 PUBLIC void webAddHeaderStaticString(Web *web, cchar *key, cchar *value)
 {
-    rAddName(getTxHeaders(web), key, (void*) value, R_STATIC_VALUE);
+    rAddDuplicateName(getTxHeaders(web), key, (void*) value, R_STATIC_VALUE);
 }
 
 static RHash *getTxHeaders(Web *web)
@@ -2176,6 +2268,7 @@ PUBLIC void webAddAccessControlHeader(Web *web)
     cchar *origin, *schema;
 
     origin = web->origin;
+    webAddHeaderStaticString(web, "Vary", "Origin");
     if (origin) {
         webAddHeaderStaticString(web, "Access-Control-Allow-Origin", origin);
     } else {
@@ -2218,6 +2311,11 @@ PUBLIC ssize webWrite(Web *web, cvoid *buf, ssize bufsize)
     if (!web->wroteHeaders && webWriteHeaders(web) < 0) {
         //  Already closed
         return R_ERR_CANT_WRITE;
+    }
+    if (web->head && !web->writingHeaders && bufsize > 0) {
+        // Non-finalizing head requests remit no body
+        webUpdateDeadline(web);
+        return 0;
     }
     if (writeChunkDivider(web, bufsize) < 0) {
         //  Already closed
@@ -2286,7 +2384,7 @@ PUBLIC ssize webWriteJson(Web *web, const Json *json)
     char  *str;
     ssize rc;
 
-    if ((str = jsonToString(json, 0, NULL, JSON_STRICT)) != 0) {
+    if ((str = jsonToString(json, 0, NULL, JSON_JSON)) != 0) {
         rc = webWrite(web, str, -1);
         rFree(str);
         return rc;
@@ -2360,7 +2458,7 @@ PUBLIC ssize webWriteResponse(Web *web, int status, cchar *fmt, ...)
     if (webWriteHeaders(web) < 0) {
         rc = R_ERR_CANT_WRITE;
     } else {
-        if (web->status != 204 && !smatch(web->method, "HEAD") && web->txLen > 0) {
+        if (web->status != 204 && !web->head && web->txLen > 0) {
             (void) webWrite(web, msg, web->txLen);
         }
         rc = webFinalize(web);
@@ -2585,6 +2683,16 @@ static bool isprintable(cchar *s, ssize len)
 
     This implements server side request state that is identified by a request cookie.
 
+    Sessions are created on-demand whenever a variable is set in the session state via webSetSessionVar.
+    Sessions can be manually created via webCreateSession and destroyed via webDestroySession.
+
+    XSRF tokens are created for routes that have xsrf enabled. When a GET request is made, http.c:handleRequest
+    will call web AddSecurityToken to add the XSRF token to the response headers and cookies.
+    When a subsequent POST|PUT|DELETE request is made, http.c:handleRequest will call webCheckSecurityToken to
+    check the XSRF token.
+
+    Clients
+
     Copyright (c) All Rights Reserved. See copyright notice at the bottom of the file.
  */
 
@@ -2600,7 +2708,6 @@ static bool isprintable(cchar *s, ssize len)
 /*********************************** Forwards *********************************/
 
 static WebSession *createSession(Web *web);
-static char *makeSessionID(Web *web);
 static void pruneSessions(WebHost *host);
 
 /************************************ Locals **********************************/
@@ -2622,7 +2729,7 @@ static WebSession *webAllocSession(Web *web, int lifespan)
     }
     sp->lifespan = lifespan;
     sp->expires = rGetTicks() + lifespan;
-    sp->id = makeSessionID(web);
+    sp->id = cryptID(32);
 
     if ((sp->cache = rAllocHash(0, 0)) == 0) {
         rFree(sp->id);
@@ -2651,17 +2758,10 @@ PUBLIC void webFreeSession(WebSession *sp)
 
 PUBLIC void webDestroySession(Web *web)
 {
-    WebHost    *host;
     WebSession *session;
-    cchar      *httpOnly, *secure, *sameSite;
 
     if ((session = webGetSession(web, 0)) != 0) {
-        host = web->host;
-        httpOnly = host->httpOnly ? "HttpOnly; " : "";
-        secure = rIsSocketSecure(web->sock) ? "Secure; " : "";
-        sameSite = host->sameSite ? host->sameSite : "Lax";
-        webAddHeader(web, "Set-Cookie", "%s=; Max-Age=0; path=/; %s%sSameSite=%s",
-                     WEB_SESSION_COOKIE, secure, httpOnly, sameSite);
+        webSetCookie(web, web->host->sessionCookie, NULL, "/", 0, 0);
         rRemoveName(web->host->sessions, session->id);
         webFreeSession(session);
         web->session = 0;
@@ -2684,20 +2784,21 @@ WebSession *webGetSession(Web *web, int create)
     char       *id;
 
     assert(web);
+
     session = web->session;
 
     if (!session) {
-        id = webParseCookie(web, WEB_SESSION_COOKIE);
+        id = webParseCookie(web, web->host->sessionCookie);
         if ((session = rLookupName(web->host->sessions, id)) == 0) {
             if (create) {
                 session = createSession(web);
             }
+            web->session = session;
         }
         rFree(id);
     }
     if (session) {
         session->expires = rGetTicks() + session->lifespan;
-        web->session = session;
     }
     return session;
 }
@@ -2706,7 +2807,6 @@ static WebSession *createSession(Web *web)
 {
     WebSession *session;
     WebHost    *host;
-    cchar      *httpOnly, *secure, *sameSite;
     int        count;
 
     host = web->host;
@@ -2719,15 +2819,11 @@ static WebSession *createSession(Web *web)
     if ((session = webAllocSession(web, host->sessionTimeout)) == 0) {
         return 0;
     }
-    secure = rIsSocketSecure(web->sock) ? "Secure; " : "";
-    httpOnly = host->httpOnly ? "HttpOnly; " : "";
-    sameSite = host->sameSite ? host->sameSite : "Lax";
-    webAddHeader(web, "Set-Cookie", "%s=%s; MaxAge=%d; path=/; %s%sSameSite=%s", WEB_SESSION_COOKIE,
-                 session->id, host->sessionTimeout / TPS, secure, httpOnly, sameSite);
+    webSetCookie(web, web->host->sessionCookie, session->id, "/", 0, 0);
     return session;
 }
 
-PUBLIC char *webParseCookie(Web *web, char *name)
+PUBLIC char *webParseCookie(Web *web, cchar *name)
 {
     char *buf, *cookie, *end, *key, *tok, *value, *vtok;
 
@@ -2844,14 +2940,137 @@ static void pruneSessions(WebHost *host)
     host->sessionEvent = rStartEvent((REventProc) pruneSessions, host, WEB_SESSION_PRUNE);
 }
 
-static char *makeSessionID(Web *web)
+/*
+    Get a security token to use to mitiate CSRF threats and store it in the session state.
+    This will create a security token and save it in session state.
+    This will not send the token to the client. Use webAddSecurityToken to send the XSRF token to the client.
+    Security tokens are expected to be sent with POST requests to verify the request is not being forged.
+    Note: the Session API prevents session hijacking by pairing with the client IP
+ */
+PUBLIC cchar *webGetSecurityToken(Web *web, bool recreate)
 {
-    uchar idBuf[64];
+    cchar *token;
 
-    assert(web);
+    if (recreate) {
+        rFree(web->securityToken);
+        web->securityToken = 0;
+    } else if (!web->securityToken) {
+        // Find the existing token in the session state
+        if ((token = webGetSessionVar(web, WEB_SESSION_XSRF, 0)) != 0) {
+            web->securityToken = sclone(token);
+        }
+    }
+    if (web->securityToken == 0) {
+        web->securityToken = cryptID(32);
+        webSetSessionVar(web, WEB_SESSION_XSRF, web->securityToken);
+    }
+    return web->securityToken;
+}
 
-    cryptGetRandomBytes(idBuf, sizeof(idBuf), 0);
-    return cryptEncode64Block(idBuf, sizeof(idBuf));
+/*
+    Add the security token to an XSRF cookie and an X-XSRF-TOKEN response header
+    Set recreate to true to force a recreation of the token.
+    This will create a session and cause a session cookie to be set in the response.
+ */
+PUBLIC int webAddSecurityToken(Web *web, bool recreate)
+{
+    cchar *securityToken;
+
+    securityToken = webGetSecurityToken(web, recreate);
+    webAddHeader(web, WEB_XSRF_HEADER, securityToken);
+    return 0;
+}
+
+/*
+    Check the security token with the request. This must match the last generated token stored in the session state.
+    It is expected the client will set the X-XSRF-TOKEN request header with the token.
+    The user should call this function in the post action handler.
+ */
+PUBLIC bool webCheckSecurityToken(Web *web)
+{
+    cchar *requestToken, *sessionToken;
+
+    if ((sessionToken = webGetSessionVar(web, WEB_SESSION_XSRF, 0)) == 0) {
+        // No prior GET to establish a token
+        webAddSecurityToken(web, 1);
+        return 0;
+    } else {
+        requestToken = webGetHeader(web, WEB_XSRF_HEADER);
+        if (!requestToken) {
+            requestToken = webGetVar(web, WEB_XSRF_PARAM, 0);
+            if (!requestToken) {
+                rError("session", "Missing security token in request");
+                webAddSecurityToken(web, 1);
+                return 0;
+            }
+        }
+        if (!requestToken || !cryptMatch(sessionToken, requestToken)) {
+            /*
+                Potential CSRF attack. Deny request.
+             */
+            rError("session", "Security token in request does not match session token");
+            webAddSecurityToken(web, 1);
+            return 0;
+        }
+    }
+    return 1;
+}
+
+/*
+    Get a request cookie. The web->cookie contains a list of header cookies.
+    A site may submit multiple cookies separated by ";"
+ */
+PUBLIC char *webGetCookie(Web *web, cchar *name)
+{
+    char *buf, *cookie, *end, *key, *tok, *value, *vtok;
+
+    //  Limit cookie size to 8192 bytes for security (consistent with webParseCookie)
+    if (web->cookie == 0 || name == 0 || *name == '\0' || slen(web->cookie) > 8192) {
+        return 0;
+    }
+    buf = sclone(web->cookie);
+    end = &buf[slen(buf)];
+    value = 0;
+
+    for (tok = buf; tok && tok < end; ) {
+        cookie = stok(tok, ";", &tok);
+        cookie = strim(cookie, " ", R_TRIM_BOTH);
+        key = stok(cookie, "=", &vtok);
+        if (smatch(key, name)) {
+            // Remove leading spaces first, then double quotes. Spaces inside double quotes preserved.
+            value = sclone(strim(strim(vtok, " ", R_TRIM_BOTH), "\"", R_TRIM_BOTH));
+            break;
+        }
+    }
+    rFree(buf);
+    return value;
+}
+
+/*
+    Set a response cookie
+ */
+PUBLIC void webSetCookie(Web *web, cchar *name, cchar *value, cchar *path, Ticks lifespan, int flags)
+{
+    WebHost *host;
+    cchar   *httpOnly, *secure, *sameSite;
+    Ticks   maxAge;
+
+    host = web->host;
+    if (flags & WEB_COOKIE_OVERRIDE) {
+        httpOnly = flags & WEB_COOKIE_HTTP_ONLY ? "HttpOnly; " : "";
+        secure = flags & WEB_COOKIE_SECURE ? "Secure; " : "";
+        sameSite = flags & WEB_COOKIE_SAME_SITE ? host->sameSite : "Lax";
+    } else {
+        httpOnly = host->httpOnly ? "HttpOnly; " : "";
+        secure = rIsSocketSecure(web->sock) ? "Secure; " : "";
+        sameSite = host->sameSite ? host->sameSite : "Lax";
+    }
+    if (path == 0) {
+        path = "/";
+    }
+    maxAge = (lifespan ? lifespan: host->sessionTimeout) / TPS;
+    webAddHeader(web, "Set-Cookie", "%s=%s; Max-Age=%d; path=%s; %s%sSameSite=%s",
+                 name, value, maxAge, path, secure, httpOnly, sameSite);
 }
 #endif /* ME_WEB_SESSION */
 
@@ -2900,7 +3119,7 @@ PUBLIC int webUpgradeSocket(Web *web)
 
     assert(web);
 
-    if (!web->host->webSocketsEnable || web->error || web->wroteHeaders || !smatch(web->method, "GET")) {
+    if (!web->host->webSocketsEnable || web->error || web->wroteHeaders || !web->get) {
         return R_ERR_BAD_STATE;
     }
     host = web->host;
@@ -3060,7 +3279,7 @@ static void showRequest(Web *web)
     bool     isPrintable;
     int      i;
 
-    json = jsonAlloc(0);
+    json = jsonAlloc();
     jsonSetFmt(json, 0, "url", "%s", web->url);
     jsonSetFmt(json, 0, "method", "%s", web->method);
     jsonSetFmt(json, 0, "protocol", "%s", web->protocol);
@@ -3117,7 +3336,7 @@ static void showRequest(Web *web)
         jsonSetFmt(json, 0, "bodyLength", "%ld", len);
         isPrintable = 1;
         for (i = 0; i < len; i++) {
-            if (!isprint((uchar) body[i]) || body[i] == '\n' || body[i] == '\r' || body[i] == '\t') {
+            if (!isprint((uchar) body[i]) && body[i] != '\n' && body[i] != '\r' && body[i] != '\t') {
                 isPrintable = 0;
                 break;
             }
@@ -3129,8 +3348,8 @@ static void showRequest(Web *web)
     showRequestContext(web, json);
     showServerContext(web, json);
 
+    webAddHeaderStaticString(web, "Content-Type", "application/json");
     webWriteJson(web, json);
-
     jsonFree(json);
 }
 
@@ -3292,9 +3511,9 @@ static void sigAction(Web *web)
     web->username = "user";
 
     if (web->vars) {
-        webWriteValidatedJson(web, web->vars);
+        webWriteValidatedJson(web, web->vars, NULL);
     } else {
-        webWriteValidatedData(web, rBufToString(web->body));
+        webWriteValidatedData(web, rBufToString(web->body), NULL);
     }
     webFinalize(web);
 }
@@ -3310,7 +3529,7 @@ static void uploadAction(Web *web)
     if (web->uploads) {
         for (ITERATE_NAME_DATA(web->uploads, up, file)) {
             path = rJoinFile("/tmp", file->clientFilename);
-            if (rCopyFile(file->filename, path, 0644) < 0) {
+            if (rCopyFile(file->filename, path, 0600) < 0) {
                 webError(web, 500, "Cant open output upload filename");
                 rFree(path);
                 break;
@@ -3321,6 +3540,63 @@ static void uploadAction(Web *web)
     webFinalize(web);
 }
 #endif
+
+static void sessionAction(Web *web)
+{
+    cchar *sessionToken;
+    char  *token;
+
+    if (smatch(web->path, "/test/session/create")) {
+        /*
+            Set a token in the session state and return it to the client.
+            It will send it back in the query string to the /check action below.
+         */
+        token = cryptID(32);
+        webSetSessionVar(web, "token", token);
+        webWriteFmt(web, "%s", token);
+        rFree(token);
+
+    } else if (smatch(web->path, "/test/session/check")) {
+        /*
+            Check the session token matches the query token
+         */
+        sessionToken = webGetSessionVar(web, "token", 0);
+        if (smatch(web->query, sessionToken)) {
+            webWriteFmt(web, "success");
+        } else {
+            webWriteFmt(web, "token mismatch");
+        }
+
+    } else if (smatch(web->path, "/test/session/form.html")) {
+        /*
+           if (web->get) {
+            // Add an XSRF token to the response in the headers and cookies
+            webAddSecurityToken(web, 1);
+
+           } else
+           if (web->post) {
+            if (webCheckSecurityToken(web)) {
+                webWriteFmt(web, "success");
+            } else {
+                webWriteFmt(web, "Security token matches");
+            }
+           }
+         */
+        webWriteFmt(web, "success");
+    }
+    webFinalize(web);
+}
+
+/*
+    This action is invoked for the GET and POST requests to the /test/xsrf/ route.
+    The core engine will add an XSRF token in response to the GET request and will validate it
+    in subsequent POST requests. We don't need to do anything here.
+ */
+static void xsrfAction(Web *web)
+{
+    webWriteFmt(web, "success");
+    webFinalize(web);
+}
 
 /*
     Read a streamed rx body
@@ -3385,6 +3661,8 @@ PUBLIC void webTestInit(WebHost *host, cchar *prefix)
 #if ME_COM_WEBSOCKETS
     webAddAction(host, SFMT(url, "%s/ws", prefix), webSocketAction, NULL);
 #endif
+    webAddAction(host, SFMT(url, "%s/session", prefix), sessionAction, NULL);
+    webAddAction(host, SFMT(url, "%s/xsrf", prefix), xsrfAction, NULL);
     webAddAction(host, SFMT(url, "%s/sig", prefix), sigAction, NULL);
     webAddAction(host, SFMT(url, "%s/buffer", prefix), bufferAction, NULL);
 }
@@ -3438,7 +3716,7 @@ PUBLIC int webInitUpload(Web *web)
     web->uploads = rAllocHash(0, 0);
     web->numUploads = 0;
     //  Freed in freeWebFields (web.c)
-    web->vars = jsonAlloc(0);
+    web->vars = jsonAlloc();
     return 0;
 }
 
@@ -3585,7 +3863,13 @@ static WebUpload *allocUpload(Web *web, cchar *name, cchar *path, cchar *content
     upload->fd = -1;
 
     if (path) {
-        if (*path == '.' || strpbrk(path, "\\/:*?<>|~\"'%`^\n\r\t\f")) {
+        // Enhanced validation against directory traversal
+        if (*path == '.' || strstr(path, "..") || strpbrk(path, "\\/:*?<>|~\"'%`^\n\r\t\f")) {
+            webError(web, 400, "Bad upload client filename");
+            return 0;
+        }
+        // Check for URL-encoded directory traversal attempts
+        if (strstr(path, "%2e") || strstr(path, "%2E") || strstr(path, "%2f") || strstr(path, "%2F") || strstr(path, "%5c") || strstr(path, "%5C")) {
             webError(web, 400, "Bad upload client filename");
             return 0;
         }
@@ -3595,14 +3879,13 @@ static WebUpload *allocUpload(Web *web, cchar *name, cchar *path, cchar *content
             Create the file to hold the uploaded data
          */
         if ((upload->filename = rGetTempFile(web->host->uploadDir, "tmp")) == 0) {
-            webError(web, 500, "Cannot create upload temp file %s. Check upload temp dir %s", upload->filename,
-                     web->host->uploadDir);
+            webError(web, 500, "Cannot create upload temp file. Check upload directory configuration");
             return 0;
         }
         rTrace("web", "File upload of: %s stored as %s", upload->clientFilename, upload->filename);
 
         if ((upload->fd = open(upload->filename, O_WRONLY | O_CREAT | O_TRUNC | O_BINARY, 0600)) < 0) {
-            webError(web, 500, "Cannot open upload temp file %s", upload->filename);
+            webError(web, 500, "Cannot open upload temp file");
             return 0;
         }
         rAddName(web->uploads, upload->name, upload, 0);
@@ -3932,11 +4215,11 @@ PUBLIC char *webParseUrl(cchar *uri,
 }
 
 /*
-    Normalize a path to remove "./",  "../" and redundant separators. 
+    Normalize a path to remove "./",  "../" and redundant separators.
     This does not map separators nor change case. Returns an allocated path, caller must free.
 
-    Security: This routine is safe because callers (webFileHandler) uses simple string
-    concatenation to join the result with the document root. 
+    SECURITY Acceptable:: This routine does not check for path traversal because
+    all callers validate the path before calling this routine.
  */
 PUBLIC char *webNormalizePath(cchar *pathArg)
 {
@@ -3983,7 +4266,7 @@ PUBLIC char *webNormalizePath(cchar *pathArg)
         if (smatch(sp, "..")) {
             if (j > 0) {
                 j--;
-            } else if (!isAbs) {
+            } else {
                 //  Attempt to traverse up from a relative path's root. This is a security risk.
                 rFree(dupPath);
                 rFree(segments);
@@ -4082,10 +4365,8 @@ PUBLIC char *webEncode(cchar *uri)
     char         *result, *op;
     int          len;
 
-    assert(uri);
-
     if (!uri) {
-        return sclone("");
+        return NULL;
     }
     for (len = 1, ip = uri; *ip; ip++, len++) {
         if (charMatch[(uchar) * ip] & WEB_ENCODE_URI) {
@@ -4239,7 +4520,7 @@ PUBLIC void webRemoveVar(Web *web, cchar *name)
                     fields: {       - If object
                         NAME: {
                             description - Field description for doc
-                            discard     - Remove from data (for response)
+                            drop        - Remove from data (for response)
                             fields      - Nested object
                             of          - If type == 'array' then nested block
                             required    - Must be present (for request)
@@ -4275,14 +4556,17 @@ PUBLIC void webRemoveVar(Web *web, cchar *name)
 
 /************************************ Locals **********************************/
 
-#define WEB_MAX_SIG_DEPTH 8             /* Maximum depth of signature validation */
+#define WEB_MAX_SIG_DEPTH 8  /* Maximum depth of signature validation */
 
 /************************************ Forwards *********************************/
 
-static void dropField(Web *web, cchar *tag, Json *json, int jid, cchar *name);
-static cchar *getType(Web *web, JsonNode *signature);
+static cchar *getType(Web *web, int sid);
 static int parseUrl(Web *web);
 static bool valError(Web *web, Json *json, cchar *fmt, ...);
+static bool validateArray(Web *web, RBuf *buf, Json *json, int jid, int sid, int depth, cchar *tag);
+static bool validateObject(Web *web, RBuf *buf, Json *json, int jid, int sid, int depth, cchar *tag);
+static bool validatePrimitive(Web *web, cchar *data, int sid, cchar *tag);
+static bool validateProperty(Web *web, RBuf *buf, Json *json, int jid, int sid, cchar *tag);
 
 /************************************* Code ***********************************/
 /*
@@ -4296,9 +4580,9 @@ static bool valError(Web *web, Json *json, cchar *fmt, ...);
  */
 PUBLIC bool webValidateRequest(Web *web, cchar *path)
 {
-    WebHost  *host;
-    JsonNode *signature, *qsig;
-    cchar    *type;
+    WebHost *host;
+    cchar   *type;
+    int     sid;
 
     host = web->host;
     if (!host->signatures) {
@@ -4308,41 +4592,326 @@ PUBLIC bool webValidateRequest(Web *web, cchar *path)
         if (host->strictSignatures) {
             return valError(web, NULL, "Missing request signature for request");
         }
-        rError("web", "Cannot find request signature for %s", web->path);
+        rDebug("web", "Cannot find signature for %s, continuing.", web->path);
         return 1;
     }
     //  Optional query signature
-    if (web->qvars && (qsig = jsonGetNode(host->signatures, web->signature, "request.query")) != 0) {
-        return webValidateJsonSignature(web, "query", web->qvars, 0, qsig, 0);
+    if (web->qvars && (sid = jsonGetId(host->signatures, web->signature, "request.query")) >= 0) {
+        return webValidateSignature(web, NULL, web->qvars, 0, sid, 0, "query");
     }
-    if ((signature = jsonGetNode(host->signatures, web->signature, "request")) == 0) {
+    if ((sid = jsonGetId(host->signatures, web->signature, "request")) < 0) {
         if (host->strictSignatures) {
             return valError(web, NULL, "Missing request API signature");
         }
+        rDebug("web", "Cannot find request signature for %s, continuing.", web->path);
         return 1;
     }
-    type = getType(web, signature);
+    type = getType(web, sid);
     if (smatch(type, "object") || smatch(type, "array")) {
-        return webValidateJsonSignature(web, "request", web->vars, 0, signature, 0);
+        return webValidateSignature(web, NULL, web->vars, 0, sid, 0, "request");
     }
-    return webValidateDataSignature(web, "request", rBufToString(web->body), signature);
+    return validatePrimitive(web, rBufToString(web->body), sid, "request");
+}
+
+/*
+    Check a JSON payload against the API signature. This evaluates the json properties starting at the "jid" node.
+    If buf is provided, it will be used to store the validated JSON. If fields are "dropped" they will not be
+    added to the buf. The routine will recurse as required over arrays and objects.
+    Returns true if the payload is valid. If invalid, we return 0 and a response is written.
+
+    Signature BLOCKS are of the form: {
+        type: 'null', 'string', 'number', 'boolean', 'object', 'array'
+        fields: {},
+        of: BLOCK
+    }
+
+    @param web Web object
+    @param buf Optional buffer to store the validated JSON as a string ready for writing to the client.
+    @param cjson JSON object (May be null)
+    @param jid Base JSON node ID from which to convert. Set to zero for the top level. If NULL, the top level is used.
+    @param sid Signature ID to validate against
+    @param depth Depth of the JSON object
+    @param tag Tag name for the request body. Set to "request", "response" or "query".
+    @return True if the request is valid. Otherwise, return false and generate an error response to the client.
+ */
+PUBLIC bool webValidateSignature(Web *web, RBuf *buf, const Json *cjson, int jid, int sid, int depth, cchar *tag)
+{
+    Json     *json;
+    JsonNode *item;
+    cchar    *type, *value;
+
+    assert(web);
+    assert(tag);
+
+    if (!web || !tag || jid < 0) {
+        rError("web", "Invalid parameters to validateSignature");
+        return 0;
+    }
+    if (!web->host->signatures || sid < 0) {
+        return 1;
+    }
+    if (depth > WEB_MAX_SIG_DEPTH) {
+        webError(web, 400, "Signature validation failed");
+        return 0;
+    }
+    // May be null
+    json = (Json*) cjson;
+    type = getType(web, sid);
+
+    if (smatch(type, "array")) {
+        if (!validateArray(web, buf, json, jid, sid, depth, tag)) {
+            return 0;
+        }
+
+    } else if (smatch(type, "object")) {
+        if (!validateObject(web, buf, json, jid, sid, depth, tag)) {
+            return 0;
+        }
+    } else {
+        //  Primitive value property
+        if (json) {
+            item = jsonGetNode(json, jid, 0);
+            value = item ? item->value : NULL;
+        } else {
+            value = NULL;
+        }
+        if (!validatePrimitive(web, value, sid, tag)) {
+            return 0;
+        }
+        if (buf && value) {
+            jsonPutValueToBuf(buf, value, JSON_JSON);
+        }
+    }
+    return 1;
+}
+
+/*
+    Iterate over the array items
+ */
+static bool validateArray(Web *web, RBuf *buf, Json *json, int jid, int sid, int depth, cchar *tag)
+{
+    Json     *signatures;
+    JsonNode *array, *item;
+    cchar    *oftype;
+    int      oid;
+
+    signatures = web->host->signatures;
+    if (!json) {
+        // Allow an empty array
+        return 1;
+    }
+    array = jsonGetNode(json, jid, 0);
+
+    if (!array || array->type != JSON_ARRAY) {
+        return valError(web, NULL, "Bad %s, expected an array", tag);
+    }
+    if (buf) {
+        rPutCharToBuf(buf, '[');
+    }
+    for (ITERATE_JSON_ID(json, jid, item, iid)) {
+        oid = jsonGetId(signatures, sid, "of");
+        if (oid >= 0) {
+            oftype = jsonGet(signatures, oid, "type", "object");
+            if (smatch(oftype, "object") || smatch(oftype, "array")) {
+                if (!webValidateSignature(web, buf, json, iid, oid, depth + 1, tag)) {
+                    return 0;
+                }
+            } else {
+                if (!validatePrimitive(web, item->value, oid, tag)) {
+                    return 0;
+                }
+                if (buf) {
+                    jsonPutValueToBuf(buf, item->value, JSON_JSON);
+                }
+            }
+        } else {
+            // Allow untyped array without a signature "of" block
+            if (buf) {
+                jsonPutToBuf(buf, json, iid, JSON_JSON);
+            }
+        }
+        if (buf) {
+            rPutCharToBuf(buf, ',');
+        }
+    }
+    if (buf) {
+        if (rGetBufLength(buf) > 1) {
+            rAdjustBufEnd(buf, -1);
+        }
+        rPutCharToBuf(buf, ']');
+    }
+    return 1;
+}
+
+/*
+    Validate a object properties and write to the optional buffer.
+    The json object may be NULL to indicate no body.
+ */
+static bool validateObject(Web *web, RBuf *buf, Json *json, int jid, int sid, int depth, cchar *tag)
+{
+    Json     *signatures;
+    JsonNode *drop, *field, *fields, *parent, *var;
+    cchar    *def, *dropRole, *ftype, *methodRole, *required, *role, *value;
+    char     dropBuf[128];
+    bool     hasRequired, hasWild, strict;
+    int      fid, id, fieldsId;
+
+    signatures = web->host->signatures;
+    strict = web->host->strictSignatures;
+
+    fields = jsonGetNode(signatures, sid, "fields");
+    if (!fields) {
+        //  Generic object with no fields defined
+        if (buf && json) {
+            jsonPutToBuf(buf, json, jid, JSON_JSON);
+        }
+        return 1;
+    }
+    hasWild = jsonGetBool(signatures, sid, "hasWild", 0);            // Allow any properties
+    hasRequired = jsonGetBool(signatures, sid, "hasRequired", 0);    // Signature has required fields
+    methodRole = jsonGet(signatures, sid, "role", web->route->role); // Required role for this signature
+
+    if (buf) {
+        rPutCharToBuf(buf, '{');
+    }
+    if (hasRequired) {
+        /*
+            Ensure all required fields are present.
+         */
+        for (ITERATE_JSON(signatures, fields, field, fid)) {
+            required = jsonGet(signatures, fid, "required", 0);
+            if (required) {
+                if (!json) {
+                    return valError(web, NULL, "Missing required %s field '%s'", tag, field->name);
+                }
+                value = jsonGet(json, jid, field->name, 0);
+                if (!value) {
+                    def = jsonGet(signatures, fid, "default", 0);
+                    if (required && !def) {
+                        return valError(web, json, "Missing required %s field '%s'", tag, field->name);
+                    }
+                    if (def) {
+                        if (buf) {
+                            // Add default value
+                            jsonPutValueToBuf(buf, field->name, JSON_JSON);
+                            rPutCharToBuf(buf, ':');
+                            jsonPutValueToBuf(buf, def, JSON_JSON);
+                            rPutCharToBuf(buf, ',');
+                        } else {
+                            // Add default value to the request / query json object
+                            rassert(!smatch(tag, "response"));
+                            jsonSet(json, jid, field->name, def, JSON_STRING);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    fieldsId = jsonGetNodeId(signatures, fields);
+
+    if (json) {
+        parent = jsonGetNode(json, jid, 0);
+        for (ITERATE_JSON(json, parent, var, vid)) {
+            if (var->name[0] == '_' || smatch(var->name, "pk") || smatch(var->name, "sk")) {
+                // Always hidden
+                continue;
+            }
+            fid = jsonGetId(signatures, fieldsId, var->name);
+            if (fid < 0 && !hasWild) {
+                if (strict) {
+                    return valError(web, json, "Invalid %s field '%s' in %s", tag, var->name, web->url);
+                }
+                rDebug("web", "Invalid %s field '%s' in %s", tag, var->name, web->url);
+                continue;
+            }
+            role = jsonGet(signatures, fid, "role", methodRole);
+            if (role && !webCan(web, role)) {
+                // Silently drop if role does not permit access
+                continue;
+            }
+            drop = jsonGetNode(signatures, fid, "drop");
+            if (drop != 0) {
+                if (drop->type == JSON_PRIMITIVE && smatch(drop->value, "true")) {
+                    continue;
+                } else if (drop->type == JSON_STRING) {
+                    if (!webCan(web, drop->value)) {
+                        continue;
+                    }
+                } else if (drop->type == JSON_OBJECT) {
+                    dropRole = jsonGet(signatures, fid, SFMT(dropBuf, "drop.%s", tag), 0);
+                    if (dropRole && !webCan(web, dropRole)) {
+                        continue;
+                    }
+                }
+            }
+            if (buf) {
+                jsonPutValueToBuf(buf, var->name, JSON_JSON);
+                rPutCharToBuf(buf, ':');
+            }
+            ftype = jsonGet(signatures, fid, "type", 0);
+            if (smatch(ftype, "object")) {
+                id = jsonGetId(json, jid, var->name);
+                if (!webValidateSignature(web, buf, json, id, fid, depth + 1, tag)) {
+                    return 0;
+                }
+            } else if (smatch(ftype, "array")) {
+                id = jsonGetId(json, jid, var->name);
+                if (!webValidateSignature(web, buf, json, id, fid, depth + 1, tag)) {
+                    return 0;
+                }
+            } else if (!validateProperty(web, buf, json, vid, fid, tag)) {
+                return 0;
+            }
+            if (buf) {
+                rPutCharToBuf(buf, ',');
+            }
+        }
+    }
+    // Remove trailing comma
+    if (buf) {
+        if (rGetBufLength(buf) > 1) {
+            rAdjustBufEnd(buf, -1);
+        }
+        rPutCharToBuf(buf, '}');
+    }
+    return 1;
+}
+
+/*
+    Validate a primitive value property and write to the optional buffer.
+ */
+static bool validateProperty(Web *web, RBuf *buf, Json *json, int jid, int sid, cchar *tag)
+{
+    JsonNode *item;
+
+    item = jsonGetNode(json, jid, 0);
+    if (!validatePrimitive(web, item ? item->value : NULL, sid, tag)) {
+        return 0;
+    }
+    if (buf) {
+        jsonPutValueToBuf(buf, item ? item->value : NULL, JSON_JSON);
+    }
+    return 1;
 }
 
 /*
     Validate data for primitive types against the API signature.
  */
-PUBLIC bool webValidateDataSignature(Web *web, cchar *tag, cchar *data, JsonNode *signature)
+static bool validatePrimitive(Web *web, cchar *data, int sid, cchar *tag)
 {
-    cchar *type;
+    JsonNode *signature;
+    cchar    *type;
 
     assert(web);
     assert(tag);
-    assert(signature);
 
-    if (!web->host->signatures || !signature) {
+    if (!web->host->signatures || sid < 0) {
         return 0;
     }
-    type = getType(web, signature);
+    type = getType(web, sid);
+    if ((signature = jsonGetNode(web->host->signatures, sid, 0)) == 0) {
+        return 0;
+    }
     if (smatch(type, "null")) {
         if (data && *data) {
             return valError(web, NULL, "Bad %s, data should be empty", tag);
@@ -4351,7 +4920,10 @@ PUBLIC bool webValidateDataSignature(Web *web, cchar *tag, cchar *data, JsonNode
         if (!data) {
             return valError(web, NULL, "Missing %s data, expected %s", tag, type);
         }
-        if (smatch(type, "number")) {
+        if (smatch(type, "string")) {
+            // Most common case first
+
+        } else if (smatch(type, "number")) {
             if (!sfnumber(data)) {
                 return valError(web, NULL, "Bad %s, \"%s\" should be a number", tag, signature->name);
             }
@@ -4366,342 +4938,109 @@ PUBLIC bool webValidateDataSignature(Web *web, cchar *tag, cchar *data, JsonNode
                 return valError(web, NULL, "Bad %s, \"%s\" should be a date", tag, signature->name);
             }
 
-        } else if (!smatch(type, "string")) {
-            return valError(web, NULL, "Bad %s data, expected a %s for \"%s\"", tag, type, signature->name);
         } else {
-            /* object | array */
+            return valError(web, NULL, "Bad %s data, expected a %s for \"%s\"", tag, type, signature->name);
         }
+        /* object | array */
     }
     return 1;
 }
 
 /*
-    Check a JSON payload against the API signature. This evaluates the json properties starting at the "jid" node.
-    It will recurse as required over arrays and objects. If fields are to be dropped in a "response", the json is
-    cloned into web->validatedJson and the field is removed there. Return true if the request is valid. If invalid,
-    we return 0 and the connection is closed after the error response is written.
-    The signature may be:
-    Signature BLOCKS are of the form: {
-        type: 'null', 'string', 'number', 'boolean', 'object', 'array'
-        fields: {},
-        of: BLOCK
-    }
+    Validate a data primitive against the API signature and write to the optional buffer. Return true if valid.
  */
-PUBLIC bool webValidateJsonSignature(Web *web, cchar *tag, const Json *cjson, int jid, JsonNode *signature, int depth)
+PUBLIC bool webValidateData(Web *web, RBuf *buf, cchar *data, cchar *sigKey, cchar *tag)
 {
-    WebHost  *host;
-    Json     *json, *signatures;
-    JsonNode *array, *drop, *field, *fields, *item, *parent, *of, *var;
-    cchar    *def, *dropRole, *ftype, *methodRole, *oftype, *required, *role, *type, *value;
-    char     rbuf[128];
-    bool     hasWild, strict;
-    int      id, sid;
+    Json  *json;
+    cchar *type;
+    int   rc, sid;
 
-    assert(web);
-    assert(tag);
-    assert(signature);
-
-    if (!web || !tag || !signature) {
-        rError("web", "Invalid parameters to webValidateJsonSignature");
-        return 0;
+    if (!web->host->signatures) {
+        return 1;
     }
-    host = web->host;
-    if ((signatures = host->signatures) == 0) {
-        return 0;
-    }
-    strict = host->strictSignatures;
-
-    if (depth > WEB_MAX_SIG_DEPTH) {
-        webError(web, 400, "Signature validation failed");
-        return 0;
-    }
-    json = (Json*) cjson;
-    hasWild = 0;
-
-    type = getType(web, signature);
-    sid = jsonGetNodeId(signatures, signature);
-
-    if (smatch(type, "array")) {
-        /*
-            Iterate over the array items
-         */
-        oftype = jsonGet(signatures, sid, "of.type", "object");
-        if (!json) {
-            return valError(web, NULL, "Bad %s, expected an array body", tag);
-        }
-        array = jsonGetNode(json, jid, 0);
-        if (!array || array->type != JSON_ARRAY) {
-            return valError(web, NULL, "Bad %s, expected an array", tag);
-        }
-        for (ITERATE_JSON_ID(json, jid, item, iid)) {
-            of = jsonGetNode(signatures, sid, "of");
-            if (smatch(oftype, "object")) {
-                if (of && !webValidateJsonSignature(web, tag, json, iid, of, depth + 1)) {
-                    return 0;
-                }
-            } else if (smatch(oftype, "array")) {
-                if (of && !webValidateJsonSignature(web, tag, json, iid, of, depth + 1)) {
-                    return 0;
-                }
-            } else {
-                if (of && !webValidateDataSignature(web, tag, item->value, of)) {
-                    return 0;
-                }
-            }
-        }
-    } else if (smatch(type, "object")) {
-        /*
-            Iterate over object fields. If no fields present, then allow any fields (even if strict).
-         */
-        methodRole = jsonGet(signatures, sid, "role", web->route->role);
-        fields = jsonGetNode(signatures, sid, "fields");
-        if (fields) {
-            for (ITERATE_JSON(signatures, fields, field, fid)) {
-                if (field->name[0] == '_') {
-                    continue;
-                }
-                if (smatch(field->name, "*")) {
-                    hasWild = 1;
-                    continue;
-                }
-                role = jsonGet(signatures, fid, "role", methodRole);
-                if (role && !webCan(web, role)) {
-                    continue;
-                }
-                value = jsonGet(json, jid, field->name, 0);
-                if (!value) {
-                    required = jsonGet(signatures, fid, "required", 0);
-                    def = jsonGet(signatures, fid, "default", 0);
-                    if (required && !def) {
-                        return valError(web, json, "Missing required %s field '%s'", tag, field->name);
-                    } else if (def) {
-                        jsonSet(json, jid, field->name, def, 0);
-                    }
-                } else {
-                    if ((drop = jsonGetNode(signatures, fid, "drop")) != 0) {
-                        if (drop->type == JSON_PRIMITIVE && smatch(drop->value, "true")) {
-                            dropField(web, tag, json, jid, field->name);
-                            continue;
-                        } else if (drop->type == JSON_STRING) {
-                            if (!webCan(web, drop->value)) {
-                                dropField(web, tag, json, jid, field->name);
-                                continue;
-                            }
-                        } else if (drop->type == JSON_OBJECT) {
-                            dropRole = jsonGet(signatures, fid, SFMT(rbuf, "drop.%s", tag), 0);
-                            if (dropRole && !webCan(web, dropRole)) {
-                                dropField(web, tag, json, jid, field->name);
-                                continue;
-                            }
-                        }
-                    }
-                    // discard - DEPRECATED
-                    if (jsonGet(signatures, fid, "discard", 0)) {
-                        dropField(web, tag, json, jid, field->name);
-                        continue;
-                    }
-                    ftype = jsonGet(signatures, fid, "type", 0);
-                    if (smatch(ftype, "object")) {
-                        id = jsonGetId(json, jid, field->name);
-                        if (!webValidateJsonSignature(web, tag, json, id, field, depth + 1)) {
-                            return 0;
-                        }
-                    } else if (smatch(ftype, "array")) {
-                        id = jsonGetId(json, jid, field->name);
-                        // of = jsonGetNode(signatures, fid, "of");
-                        if (!webValidateJsonSignature(web, tag, json, id, field, depth + 1)) {
-                            return 0;
-                        }
-                    } else {
-                        if (!webValidateDataSignature(web, tag, value, field)) {
-                            return 0;
-                        }
-                    }
-                }
-            }
-        }
-        /*
-            Check for extra fields in the payload.
-            Use validatedJson if there has been dropped fields above.
-         */
-        json = web->validatedJson ? web->validatedJson : (Json*) json;
-        if (json && !hasWild) {
-            parent = jsonGetNode(json, jid, 0);
-            // When iterating a json object, we need to restart if we remove a field
-again:
-            for (ITERATE_JSON(json, parent, var, vid)) {
-                if (smatch(var->name, "_type") || smatch(var->name, "pk") || smatch(var->name, "sk")) {
-                    continue;
-                }
-                id = jsonGetId(signatures, sid, "fields");
-                if (id < 0) {
-                    //  No fields defined, so allow any fields
-                    continue;
-                }
-                //  Test if variable is in the fields signature
-                id = jsonGetId(signatures, id, var->name);
-                if (id < 0) {
-                    if (strict) {
-                        return valError(web, json, "Invalid extra %s field '%s'", tag, var->name);
-                    }
-                    rDebug("web", "WARNING: removing %s - not in signature for %s", var->name, web->url);
-                    dropField(web, tag, json, jid, var->name);
-                    goto again;
-
-                } else if ((drop = jsonGetNode(signatures, sid, "drop")) != 0) {
-                    if (drop->type == JSON_PRIMITIVE && smatch(drop->value, "true")) {
-                        dropField(web, tag, json, jid, var->name);
-                        goto again;
-                    } else if (drop->type == JSON_STRING) {
-                        if (!webCan(web, drop->value)) {
-                            dropField(web, tag, json, jid, var->name);
-                            goto again;
-                        }
-                    } else if (drop->type == JSON_OBJECT) {
-                        dropRole = jsonGet(signatures, sid, SFMT(rbuf, "drop.%s", tag), 0);
-                        if (dropRole && !webCan(web, dropRole)) {
-                            dropField(web, tag, json, jid, var->name);
-                            goto again;
-                        }
-                    }
-                } else if (jsonGet(signatures, sid, "discard", 0) != 0) {
-                    // Discard - DEPRECATED
-                    dropField(web, tag, json, jid, var->name);
-                    goto again;
-                }
-            }
+    if (sigKey) {
+        sid = jsonGetId(web->host->signatures, 0, sigKey);
+        if (sid < 0) {
+            return valError(web, NULL, "Missing signature for %s", web->url);
         }
     } else {
-        //  Primitive types
-        value = jsonGet(json, jid, 0, 0);
-        if (!webValidateDataSignature(web, tag, value, signature)) {
+        sid = jsonGetId(web->host->signatures, web->signature, "response");
+        if (sid < 0) {
+            // Allow a signature to omit the response field (even with strict mode)
+            return 1;
+        }
+        type = getType(web, sid);
+        if (smatch(type, "object") || smatch(type, "array")) {
+            json = jsonParse(data, 0);
+            rc = webValidateSignature(web, buf, json, 0, sid, 0, tag);
+            jsonFree(json);
+            return rc;
+        }
+    }
+    if (!validatePrimitive(web, data, sid, tag)) {
+        return 0;
+    }
+    if (buf) {
+        jsonPutValueToBuf(buf, data, JSON_JSON);
+    }
+    return 1;
+}
+
+/*
+    Validate json against the API signature and write to the optional buffer. Return true if valid.
+ */
+PUBLIC bool webValidateJson(Web *web, RBuf *buf, const Json *cjson, int jid, cchar *sigKey, cchar *tag)
+{
+    int sid;
+
+    if (!web->host->signatures) {
+        return 1;
+    }
+    if (sigKey) {
+        sid = jsonGetId(web->host->signatures, 0, sigKey);
+        if (sid < 0) {
             return 0;
         }
-    }
-    return 1;
-}
-
-/*
-    Drop a field from the response json. Must not mutate the original json, so we clone it if needed.
- */
-static void dropField(Web *web, cchar *tag, Json *json, int jid, cchar *name)
-{
-    if (!smatch(tag, "response")) {
-        //  For request and query, we remove the field from the original json
-        jsonRemove(json, jid, name);
     } else {
-        /*
-            For responses, we clone the response and remove from the cloned json
-            We do this to optimize the case of writing data directly from the database using dbJson()
-         */
-        if (web->validatedJson) {
-            jsonRemove(web->validatedJson, jid, name);
-        } else {
-            web->validatedJson = jsonClone(json, 0);
-            jsonRemove(web->validatedJson, jid, name);
+        sid = jsonGetId(web->host->signatures, web->signature, "response");
+        if (sid < 0) {
+            // Allow a signature to omit the response field (even with strict mode)
+            if (buf) {
+                jsonPutToBuf(buf, cjson, jid, JSON_JSON);
+            }
+            return 1;
         }
     }
+    return webValidateSignature(web, buf, cjson, jid, sid, 0, tag);
 }
 
 /*
-    This will write an error response to the client and close the connection.
- */
-static bool valError(Web *web, Json *json, cchar *fmt, ...)
-{
-    va_list args;
-    char    *msg;
-
-    va_start(args, fmt);
-    msg = sfmtv(fmt, args);
-    webWriteResponse(web, 0, "%s\n", msg);
-    if (json) {
-        rError("web", "Validation error: for '%s'. %s, body \n%s", web->path, msg, jsonString(json, JSON_PRETTY));
-    } else {
-        rError("web", "Validation error: for '%s'. %s", web->path, msg);
-    }
-    rFree(msg);
-    va_end(args);
-    return 0;
-}
-
-static cchar *getType(Web *web, JsonNode *signature)
-{
-    cchar *type;
-    int   sid;
-
-    if (signature->type == JSON_PRIMITIVE && smatch(signature->value, "null")) {
-        type = "null";
-    } else if (signature->type == JSON_STRING) {
-        type = signature->value;
-    } else {
-        sid = jsonGetNodeId(web->host->signatures, signature);
-        type = jsonGet(web->host->signatures, sid, "type", 0);
-    }
-    if (!type) {
-        type = "object";
-    }
-    return type;
-}
-
-/*
-    Write a validated response and check against the API signature.
+    Validate a data buffer against an API signature. The standard response signature is used if no key is provided.
     We allow a signature to omit the response field (even with strict mode)
  */
-PUBLIC bool webValidateData(Web *web, cchar *buf)
+PUBLIC ssize webWriteValidatedData(Web *web, cchar *data, cchar *sigKey)
 {
-    JsonNode *signature;
-
     assert(web);
 
-    if ((signature = jsonGetNode(web->host->signatures, web->signature, "response")) != 0) {
-        if (!webValidateDataSignature(web, "response", buf, signature)) {
-            return 0;
-        }
+    webBuffer(web, 0);
+    if (!webValidateData(web, web->buffer, data, sigKey, "response")) {
+        return R_ERR_BAD_ARGS;
     }
-    return 1;
+    return rGetBufLength(web->buffer);
 }
 
 /*
-    Validate a JSON object against the API signature.
-    Allow a signature to not have a response even with strict mode
+    Validate a json object against an API signature. The standard response signature is used if no key is provided.
  */
-PUBLIC bool webValidateJson(Web *web, const Json *json)
+PUBLIC ssize webWriteValidatedJson(Web *web, const Json *json, cchar *sigKey)
 {
-    JsonNode *signature;
-    WebHost  *host;
-
     assert(web);
 
-    host = web->host;
-    if (host->signatures && web->signature >= 0) {
-        if ((signature = jsonGetNode(web->host->signatures, web->signature, "response")) != 0) {
-            if (!webValidateJsonSignature(web, "response", json, 0, signature, 0)) {
-                return R_ERR_BAD_REQUEST;
-            }
-        }
-    }
-    return 1;
-}
-
-PUBLIC ssize webWriteValidatedJson(Web *web, const Json *json)
-{
-    if (!webValidateJson(web, json)) {
+    webBuffer(web, 0);
+    if (!webValidateJson(web, web->buffer, json, 0, sigKey, "response")) {
         return R_ERR_BAD_ARGS;
     }
-    json = web->validatedJson ? web->validatedJson : (Json*) json;
-    return webWriteJson(web, json);
-}
-
-/*
-    Validate a data buffer against the API signature.
-    The data is not modified and must be null terminated.
- */
-PUBLIC ssize webWriteValidatedData(Web *web, cchar *data)
-{
-    if (!webValidateData(web, data)) {
-        return R_ERR_BAD_ARGS;
-    }
-    return webWrite(web, data, -1);
+    return rGetBufLength(web->buffer);
 }
 
 /*
@@ -4771,10 +5110,51 @@ static int parseUrl(Web *web)
         Normalize and sanitize the path. This routine will process ".." and "." segments.
         This is safe because callers (webFileHandler) uses simple string concatenation to
         join the result with the document root.
-    */
+     */
     if ((web->path = webNormalizePath(path)) == 0) {
         return webNetError(web, "Illegal URL");
     }
+    return 0;
+}
+
+static cchar *getType(Web *web, int sid)
+{
+    JsonNode *signature;
+    cchar    *type;
+
+    if ((signature = jsonGetNode(web->host->signatures, sid, 0)) == 0) {
+        return "object";
+    }
+    if (signature->type == JSON_PRIMITIVE && smatch(signature->value, "null")) {
+        type = "null";
+    } else if (signature->type == JSON_STRING) {
+        type = signature->value;
+    } else {
+        sid = jsonGetNodeId(web->host->signatures, signature);
+        type = jsonGet(web->host->signatures, sid, "type", 0);
+    }
+    if (!type) {
+        type = "object";
+    }
+    return type;
+}
+
+/*
+    This will write an error response to the client and close the connection.
+ */
+static bool valError(Web *web, Json *json, cchar *fmt, ...)
+{
+    va_list args;
+    char    *msg;
+
+    va_start(args, fmt);
+    msg = sfmtv(fmt, args);
+    webWriteResponse(web, 0, "%s\n", msg);
+    if (json) {
+        rDebug("web", "Validation payload\n%s", jsonString(json, JSON_HUMAN));
+    }
+    rFree(msg);
+    va_end(args);
     return 0;
 }
 

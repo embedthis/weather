@@ -1,20 +1,39 @@
 /*
     demoApp.c -- Demonstration App for Ioto
  */
+
+/********************************* Includes ***********************************/
 #include "ioto.h"
 
 #if ESP32
 #include "driver/gpio.h"
 #include "rom/gpio.h"
+#endif
+
+/********************************* Defines ************************************/
+
+#if ESP32
 #define GPIO         2
 #endif
 
+/*
+    SECURITY Acceptable:: This is the public eval product ID.
+    Disclosure here is not a security risk.
+ */
 #define EVAL_PRODUCT "01H4R15D3478JD26YDYK408XE6"
+
+/*
+    Flag to indicate that on-demand MQTT connections are used
+ */
+static int onDemand = 0;
+
+/*************************** Forward Declarations *****************************/
 
 static void deviceCommand(void *ctx, DbItem *item);
 static void customCommand(void *ctx, DbItem *item);
 static void demo(void);
 
+/*********************************** Code *************************************/
 /*
     Called when Ioto is fully initialized. This runs on a fiber while the main fiber services events.
     Ioto will typically be connected to the cloud, but depending on the mqtt.schedule may not be.
@@ -25,15 +44,18 @@ int ioStart(void)
     rWatch("device:command:power", (RWatchProc) deviceCommand, 0);
     rWatch("device:command:custom", (RWatchProc) customCommand, 0);
 
-    //  Read settings from the ioto.json5 config file
+    if (smatch(jsonGet(ioto->config, 0, "mqtt.schedule", 0), "unscheduled")) {
+        onDemand = 1;
+    }
     if (jsonGetBool(ioto->config, 0, "demo.enable", 0)) {
-        ioOnConnect((RWatchProc) demo, 0, 1);
-        rInfo("demo", "Demo started\n");
-
+        if (onDemand) {
+            demo();
+        } else {
+            //  Run the demo when the cloud MQTT connection is established
+            ioOnConnect((RWatchProc) demo, 0, 1);
+        }
         if (jsonGetBool(ioto->config, 0, "demo.service", 0)) {
-            /*
-                If offline, this update will be queued for sync to the cloud when connected
-             */
+            //  If offline, this update will be queued for sync to the cloud when connected
             dbUpdate(ioto->db, "Service", DB_JSON("{value: '%d'}", 0), DB_PARAMS(.upsert = 1));
         }
     } else {
@@ -62,6 +84,7 @@ static void demo(void)
     static int counter = 0;
 
     if (once++ > 0) return;
+    rInfo("demo", "Demo started\n");
 
     /*
         Get demo control parameters (delay, count)
@@ -83,13 +106,12 @@ static void demo(void)
     dbRemoveExpired(ioto->db, 1);
 
     for (i = 0; i < count; i++) {
-        /*
-            Could reconnect if disconnected via ioConnect()
-         */
-        if (!ioto->connected) {
-            rError("demo", "Cloud connection lost, suspending demo");
+        if (!onDemand && !ioto->connected) {
+            rInfo("demo", "Cloud connection lost, suspending demo");
             break;
         }
+        rInfo("demo", "Demo iteration %d/%d", counter, count);
+        rPrintf("\n");
         if (jsonGetBool(ioto->config, 0, "demo.counter", 0)) {
             rInfo("demo", "Updating Store.counter via MQTT request");
             ioSetNum("counter", counter);
@@ -133,14 +155,11 @@ static void demo(void)
             if (jsonGetBool(ioto->config, 0, "demo.log", 0)) {
                 rInfo("demo", "Updating Log table");
                 if (dbCreate(ioto->db, "Log", DB_JSON("{message: 'message-%d', expires: '%ld'}", counter, expires),
-                             NULL) == 0) {
+                             DB_PARAMS()) == 0) {
                     rError("demo", "Cannot update log item in database: %s", dbGetError(ioto->db));
                 }
             }
         }
-        rInfo("demo", "Demo iteration %d/%d", counter, count);
-        rPrintf("\n");
-
         if (++counter < count) {
 #if ESP32
             //  Trace task and memory usage
@@ -184,7 +203,7 @@ static void customCommand(void *ctx, DbItem *item)
 
     /*
         WARNING: no error checking of program or parameters here
-        REVIEW Acceptable: This is demo code and is not used in production.
+        SECURITY Acceptable:: This is demo code and is not used in production.
      */
     print("Run custom command: %s %s", program, parameters ? parameters : "");
     SFMT(cmd, "%s %s", program, parameters ? parameters : "");

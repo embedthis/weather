@@ -96,7 +96,7 @@ int main(int argc, char **argv)
             if (argind + 1 >= argc) {
                 return usage();
             } else {
-                //  Review Acceptable: repeat --listen override previous listen endpoints
+                //  SECURITY Acceptable:: repeat --listen override previous listen endpoints
                 arg = argv[++argind];
                 if (scontains(arg, "http://")) {
                     endpoint = sfmt("%s", argv[argind]);
@@ -124,9 +124,6 @@ int main(int argc, char **argv)
             trace = argv[++argind];
 
         } else if (smatch(argp, "--verbose") || smatch(argp, "-v")) {
-            if (argind + 1 >= argc) {
-                return usage();
-            }
             trace = TRACE_VERBOSE_FILTER;
             show = WEB_SHOW_REQ_HEADERS | WEB_SHOW_RESP_HEADERS;
 
@@ -156,11 +153,17 @@ int main(int argc, char **argv)
 
 static void start(void)
 {
+    int maxFibers;
+
     if ((config = jsonParseFile("web.json5", NULL, 0)) == NULL) {
         if ((config = jsonParse(DEFAULT_CONFIG, 0)) == 0) {
             rError("web", "Cannot parse config file \"web.json5\"");
             exit(1);
         }
+    }
+    maxFibers = (int) svalue(jsonGet(config, 0, "limits.fibers", "0"));
+    if (maxFibers) {
+        rSetFiberLimits(maxFibers);
     }
     if (endpoint) {
         jsonSetJsonFmt(config, 0, "web", "{listen: ['%s']}", endpoint);

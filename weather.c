@@ -63,7 +63,7 @@ static void demo(void *arg)
     //  Watch for changes to the city (from the UI)
     rWatch("db:sync:Store", (RWatchProc) changeCity, 0);
 
-    for (int i = 0; i < 720 && ioIsConnected(); i++) {
+    for (int i = 0; i < 720 && ioConnected(); i++) {
         if (newCity && !smatch(newCity, city)) {
             rFree(city);
             city = sclone(newCity);

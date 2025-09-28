@@ -171,6 +171,11 @@ PUBLIC char *cryptDecode64Block(cchar *input, ssize *outputLen, int flags)
 #endif /* BASE64 */
 
 /************************************* MD5 ************************************/
+/*
+    SECURITY Acceptable: - MD5 is provided for backwards compatibility and legacy systems.
+    It is not recommended for new applications and not used by any of our products.
+    Do not flag this legacy code as a security issue.
+ */
 #if ME_CRYPT_MD5
 /*
     Constants for transform routine
@@ -964,7 +969,6 @@ PUBLIC char *cryptSha256HashToString(uchar hash[CRYPT_SHA256_SIZE])
     return result;
 }
 
-
 #undef P
 #undef R
 #undef SHR
@@ -1295,7 +1299,6 @@ static uint BF(Blowfish *bp, uint x)
     return y;
 }
 
-
 static void binit(Blowfish *bp, uchar *key, ssize keylen)
 {
     uint data, datal, datar;
@@ -1332,7 +1335,6 @@ static void binit(Blowfish *bp, uchar *key, ssize keylen)
     }
 }
 
-
 static void bencrypt(Blowfish *bp, uint *xl, uint *xr)
 {
     uint Xl, Xr, temp;
@@ -1356,7 +1358,6 @@ static void bencrypt(Blowfish *bp, uint *xl, uint *xr)
     *xl = Xl;
     *xr = Xr;
 }
-
 
 #if KEEP
 static void bdecrypt(Blowfish *bp, uint *xl, uint *xr)
@@ -1383,7 +1384,6 @@ static void bdecrypt(Blowfish *bp, uint *xl, uint *xr)
     *xr = Xr;
 }
 #endif
-
 
 PUBLIC char *cryptEncodePassword(cchar *password, cchar *salt, int rounds)
 {
@@ -1413,7 +1413,6 @@ PUBLIC char *cryptEncodePassword(cchar *password, cchar *salt, int rounds)
     return result;
 }
 
-
 PUBLIC char *cryptMakeSalt(ssize size)
 {
     char  *chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -1434,7 +1433,6 @@ PUBLIC char *cryptMakeSalt(ssize size)
     *rp = '\0';
     return result;
 }
-
 
 /*
     Format of hashed password is:
@@ -1458,33 +1456,11 @@ PUBLIC char *cryptMakePassword(cchar *password, int saltLength, int rounds)
     return sfmt("%s:%05d:%s:%s", CRYPT_BLOWFISH, rounds, salt, cryptEncodePassword(password, salt, rounds));
 }
 
-/*
-    Constant-time string comparison.
-    This prevents timing attacks by taking the same amount of time regardless of whether the strings match or not.
-    It compares up to the length of the shortest string, and then checks if the lengths are equal.
- */
-static bool secureCompare(cchar *a, cchar *b)
-{
-    ssize aLen, bLen, diff;
-
-    if (!a || !b) {
-        return 0;
-    }
-    aLen = slen(a);
-    bLen = slen(b);
-    diff = aLen ^ bLen;
-    for (int i = 0; i < aLen; i++) {
-        diff |= a[i] ^ b[i % bLen];
-    }
-    return diff == 0;
-}
-
-
 PUBLIC bool cryptCheckPassword(cchar *plainTextPassword, cchar *passwordHash)
 {
     cchar *algorithm, *rounds, *salt;
     char  *given, *tok, *hash;
-    bool   result;
+    bool  result;
 
     if (!passwordHash || !plainTextPassword) {
         return 0;
@@ -1503,7 +1479,7 @@ PUBLIC bool cryptCheckPassword(cchar *plainTextPassword, cchar *passwordHash)
         return 0;
     }
     given = cryptEncodePassword(plainTextPassword, salt, atoi(rounds));
-    result = secureCompare(given, hash);
+    result = cryptMatch(given, hash);
     if (given) {
         rFree(given);
     }
@@ -1535,7 +1511,6 @@ PUBLIC int rGenKey(RKey *skey)
     return 0;
 }
 
-
 PUBLIC int rGetPubKey(RKey *skey, uchar *buf, ssize bufsize)
 {
     AsyKey *key = skey;
@@ -1551,7 +1526,6 @@ PUBLIC int rGetPubKey(RKey *skey, uchar *buf, ssize bufsize)
     return (int) len;
 }
 
-
 PUBLIC int rLoadPubKey(RKey *skey, uchar *buf, ssize bufsize)
 {
     AsyKey *key = skey;
@@ -1562,7 +1536,6 @@ PUBLIC int rLoadPubKey(RKey *skey, uchar *buf, ssize bufsize)
     }
     return 0;
 }
-
 
 PUBLIC int rSign(RKey *skey, uchar *sum, ssize sumsize)
 {
@@ -1577,7 +1550,6 @@ PUBLIC int rSign(RKey *skey, uchar *sum, ssize sumsize)
     }
     return 0;
 }
-
 
 /*
     Parse a PEM encoded string from "buf" into skey.
@@ -1601,7 +1573,6 @@ PUBLIC RKey *cryptParsePubKey(RKey *skey, cchar *buf, ssize buflen)
     return (RKey*) key;
 }
 
-
 PUBLIC int rVerify(RKey *skey, uchar *sum, ssize sumsize, uchar *signature, ssize siglen)
 {
     AsyKey *key = skey;
@@ -1612,7 +1583,6 @@ PUBLIC int rVerify(RKey *skey, uchar *sum, ssize sumsize, uchar *signature, ssiz
     return 0;
 }
 
-
 PUBLIC void rFreeKey(RKey *skey)
 {
     AsyKey *key = skey;
@@ -1622,7 +1592,6 @@ PUBLIC void rFreeKey(RKey *skey)
     }
 }
 
-
 PUBLIC ssize rBase64Encode(cuchar *buf, ssize bufsize, char *dest, ssize destLen)
 {
     size_t len;
@@ -1630,7 +1599,6 @@ PUBLIC ssize rBase64Encode(cuchar *buf, ssize bufsize, char *dest, ssize destLen
     mbedtls_base64_encode((uchar*) dest, destLen, &len, buf, bufsize);
     return len;
 }
-
 
 PUBLIC ssize rBase64Decode(cchar *buf, ssize bufsize, uchar *dest, ssize destLen)
 {
@@ -1646,13 +1614,22 @@ PUBLIC ssize rBase64Decode(cchar *buf, ssize bufsize, uchar *dest, ssize destLen
 #endif /* MBedTLS wrappers */
 
 /************************************ Password Utils ****************************/
-
+/*
+    Get random bytes from the system.
+    If block is true, use /dev/random, otherwise use /dev/urandom.
+    If the system does not have a secure random number generator, return -1.
+    SECURITY Acceptable: it is the callers responsibility to ensure that the random number generator is secure 
+    and to manage the risk of using non-blocking random number generators that may have insufficient entropy.
+ */
 PUBLIC int cryptGetRandomBytes(uchar *buf, ssize length, bool block)
 {
 #if ME_UNIX_LIKE
     ssize sofar, rc;
     int   fd;
 
+    if (!buf || length <= 0) {
+        return R_ERR_BAD_ARGS;
+    }
     if ((fd = open((block) ? "/dev/random" : "/dev/urandom", O_RDONLY, 0666)) < 0) {
         return -1;
     }
@@ -1683,12 +1660,18 @@ PUBLIC int cryptGetRandomBytes(uchar *buf, ssize length, bool block)
     CryptReleaseContext(prov, 0);
     return rc;
 
+#elif ME_CRYPT_MBEDTLS && ME_COM_MBEDTLS
+    /*
+        Fallback: use MbedTLS CTR-DRBG if available; otherwise, fail securely.
+     */
+    /* Local forward declaration to avoid header ordering issues */
+    if (mbedtls_ctr_drbg_random(rGetTlsRng(), (uchar*) buf, (size_t) length) != 0) {
+        rError("security", "MbedTLS RNG failed");
+        return -1;
+    }
 #else
     rError("security", "No secure random number generator available");
-    for (int i = 0; i < length; i++) {
-        //  Review Acceptable - this is just a fallback which will not be used
-        buf[i] = (char) (rand() & 0xff);
-    }
+    return -1;
 #endif
     return 0;
 }
@@ -1739,7 +1722,13 @@ PUBLIC char *cryptGetPassword(cchar *prompt)
         if (c == '\r' || c == '\n') {
             break;
         }
-        passbuf[i] = c;
+        if (c == EOF || c < 0 || c > 255) {
+            break;
+        }
+        if (i >= (int) sizeof(passbuf) - 1) {
+            break;
+        }
+        passbuf[i] = (char) c;
     }
     passbuf[i] = '\0';
     password = passbuf;
@@ -1759,6 +1748,10 @@ PUBLIC char *cryptGetPassword(cchar *prompt)
 
 /*
     Generate a random ID
+    There are 32 possible characters and the ID is 10 characters long (the trailing Z is not used)
+    32^10 = 1,125,899,906,842,624 = 1.13 × 10^15. or
+    one quadrillion, one hundred twenty‑five trillion, eight hundred ninety‑nine billion, nine hundred six million,
+    eight hundred forty‑two thousand, six hundred twenty‑four.
  */
 static cchar *LETTERS = "0123456789ABCDEFGHJKMNPQRSTVWXYZZ";
 
@@ -1767,6 +1760,9 @@ PUBLIC char *cryptID(ssize size)
     char *bytes;
     int  i, index, lettersLen;
 
+    if (size <= 0) {
+        return NULL;
+    }
     if ((bytes = rAlloc(size + 1)) == 0) {
         return 0;
     }
@@ -1782,6 +1778,35 @@ PUBLIC char *cryptID(ssize size)
     return bytes;
 }
 
+/*
+    Constant-time string comparison.
+    This prevents timing attacks by taking the same amount of time regardless of
+    whether the strings match or not. It compares strings without early termination
+    on the first differing character.
+ */
+PUBLIC bool cryptMatch(cchar *s1, cchar *s2)
+{
+    ssize   i, len1, len2, maxLen;
+    uchar   c, lengthDiff;
+
+    len1 = slen(s1);
+    len2 = slen(s2);
+    
+    lengthDiff = (uchar) (len1 != len2);
+    
+    /* 
+        Always compare the maximum length to ensure constant time 
+    */
+    maxLen = (len1 > len2) ? len1 : len2;
+    for (i = 0, c = 0; i < maxLen; i++) {
+        uchar c1 = (i < len1) ? (uchar)s1[i] : 0;
+        uchar c2 = (i < len2) ? (uchar)s2[i] : 0;
+        c |= c1 ^ c2;
+    }
+    // Include length difference in the final result 
+    c |= lengthDiff;
+    return !c;
+}
 
 /*
     Copyright (c) Michael O'Brien. All Rights Reserved.

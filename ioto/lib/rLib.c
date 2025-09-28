@@ -153,7 +153,7 @@ PUBLIC int rWritePid(void)
     if (getuid() == 0) {
         path = "/var/run/" ME_NAME ".pid";
         if ((buf = rReadFile(path, NULL)) != 0) {
-            //  REVIEW Acceptable: acceptable risk reading pid file
+            //  SECURITY Acceptable: acceptable risk reading pid file
             pid = atoi(buf);
             if (kill(pid, 0) == 0) {
                 rError("app", "Already running as PID %d", pid);
@@ -162,7 +162,7 @@ PUBLIC int rWritePid(void)
             }
         }
         sfmtbuf(pidbuf, sizeof(pidbuf), "%d\n", getpid());
-        if (rWriteFile(path, pidbuf, slen(pidbuf), 0666) < 0) {
+        if (rWriteFile(path, pidbuf, slen(pidbuf), 0600) < 0) {
             rError("app", "Could not create pid file %s", path);
             return R_ERR_CANT_OPEN;
         }
@@ -203,8 +203,6 @@ PUBLIC int rWritePid(void)
 
 PUBLIC int rInitBuf(RBuf *bp, ssize size)
 {
-    assert(bp);
-
     if (!bp || size <= 0) {
         return R_ERR_BAD_ARGS;
     }
@@ -266,6 +264,9 @@ PUBLIC int rGrowBuf(RBuf *bp, ssize need)
     if (need <= 0 || need > ME_R_MAX_BUF) {
         return R_ERR_BAD_ARGS;
     }
+    if (need > SSIZE_MAX - bp->buflen) {
+        return R_ERR_MEMORY;
+    }
     if (bp->buflen + need > ME_R_MAX_BUF) {
         return R_ERR_MEMORY;
     }
@@ -275,8 +276,7 @@ PUBLIC int rGrowBuf(RBuf *bp, ssize need)
     growBy = min(ME_R_MAX_BUF, need);
     growBy = max(growBy, ME_BUFSIZE);
 
-    if (growBy > 0 && bp->buflen > SSIZE_MAX - growBy) {
-        // Integer overflow
+    if (growBy > SSIZE_MAX - bp->buflen) {
         return R_ERR_MEMORY;
     }
     newSize = bp->buflen + growBy;
@@ -336,14 +336,14 @@ PUBLIC void rAdjustBufEnd(RBuf *bp, ssize size)
 {
     char *end;
 
+    if (!bp) {
+        return;
+    }
     assert(bp->buflen == (bp->endbuf - bp->buf));
     assert(size <= bp->buflen);
     assert((bp->end + size) >= bp->buf);
     assert((bp->end + size) <= bp->endbuf);
 
-    if (!bp) {
-        return;
-    }
     end = bp->end + size;
     if (end < bp->start || end > bp->endbuf) {
         return;
@@ -356,14 +356,14 @@ PUBLIC void rAdjustBufEnd(RBuf *bp, ssize size)
  */
 PUBLIC void rAdjustBufStart(RBuf *bp, ssize size)
 {
+    if (!bp || size < 0 || (bp->start + size > bp->end)) {
+        return;
+    }
     assert(bp->buflen == (bp->endbuf - bp->buf));
     assert(size <= bp->buflen);
     assert((bp->start + size) >= bp->buf);
     assert((bp->start + size) <= bp->end);
 
-    if (!bp || size < 0 || (bp->start + size > bp->end)) {
-        return;
-    }
     bp->start += size;
     if (bp->start > bp->end) {
         bp->start = bp->end;
@@ -384,7 +384,7 @@ PUBLIC void rFlushBuf(RBuf *bp)
 
 PUBLIC int rGetCharFromBuf(RBuf *bp)
 {
-    if (bp->start == bp->end) {
+    if (!bp || bp->start == bp->end) {
         return -1;
     }
     return (uchar) * bp->start++;
@@ -465,6 +465,9 @@ PUBLIC cchar *rGetBufEnd(RBuf *bp)
 
 PUBLIC int rInserCharToBuf(RBuf *bp, int c)
 {
+    if (!bp) {
+        return R_ERR_BAD_ARGS;
+    }
     if (bp->start == bp->buf) {
         return R_ERR_BAD_STATE;
     }
@@ -521,13 +524,13 @@ PUBLIC ssize rPutBlockToBuf(RBuf *bp, cchar *str, ssize size)
 {
     ssize thisLen, bytes, space;
 
+    if (!bp || !str || size < 0 || size > MAXINT) {
+        return R_ERR_BAD_ARGS;
+    }
     assert(str);
     assert(size >= 0);
     assert(size < ME_R_MAX_BUF);
 
-    if (!bp || !str || size < 0 || size > MAXINT) {
-        return R_ERR_BAD_ARGS;
-    }
     bytes = 0;
     while (size > 0) {
         space = rGetBufSpace(bp);
@@ -649,7 +652,7 @@ PUBLIC char *rBufToStringAndFree(RBuf *bp)
     s = bp->buf;
     bp->buf = 0;
     rFree(bp);
-    // REVIEW Acceptable - transfer ownership of the buffer to the caller
+    // SECURITY: Acceptable - transfer ownership of the buffer to the caller
     return s;
 }
 
@@ -808,7 +811,6 @@ static void wifiHandler(void *arg, esp_event_base_t base, int32_t id, void *even
         ip_event_got_ip_t *event = (ip_event_got_ip_t*) event_data;
         rFree(wifiIP);
         wifiIP = sfmt(IPSTR, IP2STR(&event->ip_info.ip));
-        rInfo(ETAG, "IP: %s", wifiIP);
         wifiRetries = 0;
         xEventGroupSetBits(wifiEvent, WIFI_SUCCESS);
     }
@@ -860,9 +862,9 @@ PUBLIC int rInitWifi(cchar *ssid, cchar *password, cchar *hostname)
 
     bits = xEventGroupWaitBits(wifiEvent, WIFI_SUCCESS | WIFI_FAILURE, pdFALSE, pdFALSE, portMAX_DELAY);
     if (bits & WIFI_SUCCESS) {
-        rInfo(ETAG, "WIFI connected with SSID:%s password:%s", ssid, password);
+        rInfo(ETAG, "WIFI connected with SSID:%s", ssid);
     } else if (bits & WIFI_FAILURE) {
-        rInfo(ETAG, "Failed to connect to SSID:%s, password:%s", ssid, password);
+        rInfo(ETAG, "Failed to connect to SSID:%s", ssid);
     } else {
         rInfo(ETAG, "Unexpected WIFI error %x", (uint) bits);
     }
@@ -954,7 +956,7 @@ typedef struct Event {
  */
 static Event *events = 0;
 static bool  eventsWrapped = 0;
-static bool  eventsChanged = 0;
+static bool  eventsStopped = 0;
 
 /*
     Event lock so rStartEvent can be thread safe
@@ -985,7 +987,7 @@ static Event *lookupEvent(REvent id, Event **priorp);
 PUBLIC int rInitEvents(void)
 {
     events = 0;
-    eventsChanged = 0;
+    eventsStopped = 0;
     eventsWrapped = 0;
     watches = rAllocHash(0, R_TEMPORAL_NAME | R_STATIC_VALUE);
     rInitLock(&eventLock);
@@ -1017,7 +1019,7 @@ PUBLIC void rTermEvents(void)
 }
 
 /*
-    Allocate an event.
+    Allocate an event. Events are run and respect the order of scheduling.
     If a fiber is supplied, the proc is run on that fiber. Otherwise a new fiber is allocated
     to run the proc. This routine is THREAD SAFE and is the only safe way to interact with R
     services from foreign threads. Returns an event ID that may be used with rStopEvent to
@@ -1080,6 +1082,7 @@ PUBLIC int rStopEvent(REvent id)
     }
     if ((ep = lookupEvent(id, &prior)) != 0) {
         unlinkEvent(ep, prior);
+        eventsStopped = 1;
         return 0;
     }
     return R_ERR_CANT_FIND;
@@ -1125,8 +1128,11 @@ PUBLIC Ticks rRunEvents(void)
 rescan:
     now = rGetTicks();
     deadline = MAXINT64;
-    eventsChanged = 0;
+    eventsStopped = 0;
 
+    /*
+        Run due events in the order of scheduling
+     */
     for (prior = 0, ep = events; ep && rState < R_STOPPING; ep = next) {
         next = ep->next;
         if (ep->when <= now) {
@@ -1145,8 +1151,11 @@ rescan:
                 unlinkEvent(ep, prior);
                 rResumeFiber(fiber, arg);
             }
-            if (eventsChanged) {
-                //  New event created or stopped so rescan
+            if (eventsStopped) {
+                /*
+                    Event stopped and removed when proc/fiber ran, so our "next" may not be valid.
+                    If new due events are added by proc/fiber, they will be serviced up on the next call to rRunEvents.
+                 */
                 goto rescan;
             }
         } else {
@@ -1157,25 +1166,17 @@ rescan:
     return deadline;
 }
 
-PUBLIC bool rHasDueEvents(void)
+PUBLIC Time rGetNextDueEvent(void)
 {
-    Event *ep;
-    Ticks now;
-
     if (rState >= R_STOPPING) {
-        return 1;
+        return 0;
     }
-    now = rGetTicks();
-    for (ep = events; ep ; ep = ep->next) {
-        if (ep->when <= now) {
-            return 1;
-        }
-    }
-    return 0;
+    return events ? events->when : MAXINT64;
 }
 
 /*
-    Event IDs are 64 bits and should never wrap in our lifetime, but we do handle wrapping just incase. In that case, events with IDs starting from 1 should have long since run.
+    Event IDs are 64 bits and should never wrap in our lifetime, but we do handle wrapping just incase. In that case,
+       events with IDs starting from 1 should have long since run.
     Regardless, we check for collisions with existing events.
     Event ID == 0 is invalid.
  */
@@ -1212,15 +1213,34 @@ static Event *lookupEvent(REvent id, Event **priorp)
 
 /*
     THREAD SAFE
-    Note: this appends to the head of the list. If two events with the same "when" are scheduled,
-    the last scheduled will be launched first.
+    Note: do an in-order insertion. This inserts after the last event of the same time.
  */
-static void linkEvent(Event *ep)
+static void linkEvent(Event *event)
 {
+    Event *ep, *prior;
+
     rLock(&eventLock);
-    ep->next = events;
-    events = ep;
-    eventsChanged = 1;
+    if (events) {
+        prior = 0;
+        for (ep = events; ep; ep = ep->next) {
+            if (ep->when > event->when) {
+                if (ep == events) {
+                    // Insert at the head
+                    event->next = events;
+                    events = event;
+                } else {
+                    event->next = prior->next;
+                    prior->next = event;
+                }
+                break;
+            }
+            prior = ep;
+        }
+    } else {
+        // Add to the head
+        event->next = events;
+        events = event;
+    }
     rUnlock(&eventLock);
 }
 
@@ -1236,7 +1256,6 @@ static void unlinkEvent(Event *ep, Event *prior)
     }
     rUnlock(&eventLock);
     freeEvent(ep);
-    eventsChanged = 1;
 }
 
 PUBLIC void rWatch(cchar *name, RWatchProc proc, void *data)
@@ -1289,7 +1308,7 @@ static void signalFiber(Watch *watch)
 
 /*
     Signal watchers of an event
-    This spawns a fiber for each watcher and so cannot take an argument.
+    This spawns a fiber for each watcher and is difficult to reliably take an argument that needs freeing.
  */
 PUBLIC void rSignal(cchar *name)
 {
@@ -1299,8 +1318,7 @@ PUBLIC void rSignal(cchar *name)
 
     if ((list = rLookupName(watches, name)) != 0) {
         for (ITERATE_ITEMS(list, watch, next)) {
-            // watch->arg = arg;
-            rSpawnFiber(name, (RFiberProc) signalFiber, watch);
+            rStartEvent((RFiberProc) signalFiber, watch, 0);
         }
     }
 }
@@ -1488,60 +1506,75 @@ void rFreeFiber(RFiber *fiber)
 }
 
 /*
-    Resume a fiber and pass a result. THREAD SAFE.
+    Swap context between two fibers. Pass a result to the target fiber rYieldFiber return value.
+ */
+static void *swapContext(RFiber *from, RFiber *to, void *result)
+{
+    to->result = result;
+    currentFiber = to;
+    if (uctx_swapcontext(&from->context, &to->context) < 0) {
+        rError("runtime", "Cannot swap context");
+        return 0;
+    }
+    result = from->result;
+    if (to->done) {
+        rFreeFiber(to);
+    }
+    return result;
+}
+
+/*
+    Yield from a fiber back to the main fiber.
+    The caller must have some mechanism to resume. i.e. someone must call rResumeFiber. See rSleep()
+    The parameter is passed to the
+    The return result it
+ */
+PUBLIC void *rYieldFiber(void *result)
+{
+    assert(currentFiber);
+    return swapContext(currentFiber, mainFiber, result);
+}
+
+/*
+    Resume a fiber and pass a result. The resumed fiber will receive the result value as a return value from
+    rYieldFiber. If called from the main fiber, the thread is resumed directly and immediately and
+    the main fiber is suspended until the fiber yields or completes. If called from a non-main fiber or
+    foreign-thread the target fiber is scheduled to be resumed via an event. In this case, the call to
+    rResumeFiber returns without yielding and the resumed fiber will run when the calling fiber next yields.
+    THREAD SAFE.
  */
 PUBLIC void *rResumeFiber(RFiber *fiber, void *result)
 {
-    RFiber *prior;
-
     assert(fiber);
 
     if (fiber->done) {
         return fiber->result;
     }
     if (rIsMain()) {
-        fiber->result = result;
-        prior = currentFiber;
-
-        //  Switch to a new fiber
-        currentFiber = fiber;
-        if (uctx_swapcontext(&prior->context, &fiber->context) < 0) {
-            rError("runtime", "Cannot swap context");
-            return 0;
-        }
-        //  Back from the fiber, extract the result and terminate fiber if done
-        result = fiber->result;
-        if (fiber->done) {
-            rFreeFiber(fiber);
-        }
+        result = swapContext(currentFiber, fiber, result);
     } else {
-        //  OPTIMIZE - could do direct swapcontext if main thread
-        //  Foreign threads or non-main fibers
-        //  Let main call ResumeFiber for us
+        // Foreign thread or non-main fiber running in an Ioto thread
         rStartFiber(fiber, (void*) result);
+#if FUTURE
+        /*
+            Direct swap between fibers
+            We don't use this which may be faster, but it means the critical main fiber would not be resumed
+            until the target fiber yields or completes. If the target fiber resumed other fibers, those would
+            further delay the main fiber. The current design ensures the main fiber is resumed between each
+            yielded fiber so it can respond to I/O events and scheduled events.
+         */
+    } else if (rIsForeignThread()) {
+        // A foreign thread cannot swap stacks
+        rStartFiber(fiber, (void*) result);
+    } else {
+        /*
+            Non-main fiber running in an Ioto thread
+            Direct swap context between non-main fiber and target fiber
+         */
+        result = swapContext(currentFiber, fiber, result);
+#endif
     }
     return result;
-}
-
-/*
-    Yield from a fiber back to the main fiber
-    The caller must have some mechanism to resume. i.e. someone must call rResumeFiber. See rSleep()
- */
-inline void *rYieldFiber(void *value)
-{
-    RFiber *fiber;
-
-    assert(currentFiber);
-
-    fiber = currentFiber;
-    fiber->result = value;
-    currentFiber = mainFiber;
-    if (uctx_swapcontext(&fiber->context, &mainFiber->context) < 0) {
-        rError("runtime", "Cannot swap context");
-        return 0;
-    }
-    //  Resumed original fiber so pass back result
-    return fiber->result;
 }
 
 /*
@@ -1556,7 +1589,7 @@ PUBLIC void rStartFiber(RFiber *fiber, void *arg)
 }
 
 /*
-    Allocate a new fiber and resume it. The resumption happens via rStartFiber and the main fiber.
+    Allocate a new fiber and resume it
  */
 PUBLIC int rSpawnFiber(cchar *name, RFiberProc fn, void *arg)
 {
@@ -1565,7 +1598,7 @@ PUBLIC int rSpawnFiber(cchar *name, RFiberProc fn, void *arg)
     if ((fiber = rAllocFiber(name, fn, arg)) == 0) {
         return R_ERR_MEMORY;
     }
-    rResumeFiber(fiber, 0);
+    rStartFiber(fiber, 0);
     return 0;
 }
 
@@ -1598,6 +1631,11 @@ PUBLIC bool rIsMain(void)
         return 1;
     }
     return rGetCurrentThread() == rGetMainThread() && currentFiber == mainFiber;
+}
+
+PUBLIC bool rIsForeignThread(void)
+{
+    return rGetCurrentThread() != rGetMainThread();
 }
 
 /*
@@ -1838,7 +1876,7 @@ PUBLIC char *rReadFile(cchar *path, ssize *lenp)
     int         fd;
 
     if ((fd = open(path, O_RDONLY | O_BINARY | O_CLOEXEC, 0)) < 0) {
-        rError("runtime", "Cannot open %s", path);
+        rTrace("runtime", "Cannot open %s", path);
         return 0;
     }
     if (fstat(fd, &sbuf) < 0) {
@@ -1882,7 +1920,7 @@ PUBLIC ssize rWriteFile(cchar *path, cchar *buf, ssize len, int mode)
         len = slen(buf);
     }
     if ((fd = open(path, O_WRONLY | O_TRUNC | O_CREAT | O_BINARY | O_CLOEXEC, mode)) < 0) {
-        rError("runtime", "Cannot open %s", path);
+        rTrace("runtime", "Cannot open %s", path);
         return R_ERR_CANT_OPEN;
     }
     if (write(fd, buf, len) != len) {
@@ -2554,7 +2592,7 @@ PUBLIC RList *rGetFiles(cchar *path, cchar *pattern, int flags)
 
 PUBLIC char *rGetTempFile(cchar *dir, cchar *prefix)
 {
-    char *path, sep;
+    char path[ME_MAX_PATH], sep;
     int  fd;
 
     sep = '/';
@@ -2571,29 +2609,30 @@ PUBLIC char *rGetTempFile(cchar *dir, cchar *prefix)
     if (!prefix) {
         prefix = "tmp";
     }
-    path = sfmt("%s%c%s-XXXXXX.tmp", dir, sep, prefix);
+    if (sfmtbuf(path, sizeof(path), "%s%c%s-XXXXXX.tmp", dir, sep, prefix) == NULL) {
+        rError("runtime", "Temporary filename too long");
+        return NULL;
+    }
+    ;
 
 #if ME_WIN_LIKE
-    if (_mktemp(path) == NULL) {
+    if (_mktemp_s(path, sizeof(path)) != 0) {
         rError("runtime", "Cannot create temporary filename");
-        rFree(path);
         return NULL;
     }
     if ((fd = open(path, O_CREAT | O_EXCL | O_RDWR | O_BINARY | O_CLOEXEC, 0600)) < 0) {
         rError("runtime", "Cannot create temporary file %s", path);
-        rFree(path);
         return NULL;
     }
 #else
     if ((fd = mkstemps(path, 4)) < 0) {
         rError("runtime", "Cannot create temporary file %s", path);
-        rFree(path);
         return NULL;
     }
     fchmod(fd, 0600);
 #endif
     close(fd);
-    return path;
+    return sclone(path);
 }
 
 PUBLIC void rAddDirectory(cchar *token, cchar *path)
@@ -2604,6 +2643,10 @@ PUBLIC void rAddDirectory(cchar *token, cchar *path)
 /*
     Routine to get a filename from a path for internal use only.
     Not to be used for external input.
+
+    SECURITY Acceptable: Do not flag this as a security issue. We permit paths like "../file" as
+    this is used to access files in the parent and sibling directories.
+    It is the callers responsibility to validate and check user paths before calling this function.
  */
 PUBLIC char *rGetFilePath(cchar *path)
 {
@@ -2627,11 +2670,6 @@ PUBLIC char *rGetFilePath(cchar *path)
     } else {
         result = sclone(path);
     }
-    /*
-        REVIEW Acceptable: Do not flag this as a security issue.
-        We permit paths like "../file" as this is used to access files in the parent and sibling directories.
-        It is the callers responsibility to validate and check user paths before calling this function.
-     */
     return result;
 }
 
@@ -2838,6 +2876,51 @@ PUBLIC RName *rAddName(RHash *hash, cchar *name, void *ptr, int flags)
         hash->buckets[bindex] = kindex;
         np->custom = 0;
     }
+    if (!(flags & R_NAME_MASK)) {
+        flags |= hash->flags & R_NAME_MASK;
+    }
+    np->name = (flags & R_TEMPORAL_NAME) ? sclone(name) : (void*) name;
+
+    if (!(flags & R_VALUE_MASK)) {
+        flags |= hash->flags & R_VALUE_MASK;
+    }
+    np->value = (flags & R_TEMPORAL_VALUE) ? sclone(ptr) : (void*) ptr;
+    np->flags = flags;
+    return np;
+}
+
+PUBLIC RName *rAddDuplicateName(RHash *hash, cchar *name, void *ptr, int flags)
+{
+    RName *np;
+    int   bindex, kindex;
+
+    if (hash == 0 || name == 0) {
+        assert(hash && name);
+        return 0;
+    }
+    if (flags == 0) {
+        flags = hash->flags;
+    }
+    if (hash->length >= (hash->numBuckets)) {
+        growBuckets(hash, hash->length + 1);
+    }
+    lookupHash(hash, name, &bindex, 0);
+
+    if (hash->free < 0) {
+        growNames(hash, hash->size * 3 / 2);
+    }
+    kindex = hash->free;
+    np = &hash->names[kindex];
+    hash->free = np->next;
+    hash->length++;
+
+    /*
+        Add to bucket chain
+     */
+    np->next = hash->buckets[bindex];
+    hash->buckets[bindex] = kindex;
+    np->custom = 0;
+
     if (!(flags & R_NAME_MASK)) {
         flags |= hash->flags & R_NAME_MASK;
     }
@@ -3302,11 +3385,6 @@ PUBLIC void *rSetItem(RList *lp, int index, cvoid *item)
     void *old;
     uint length;
 
-    assert(lp);
-    assert(lp && lp->capacity >= 0);
-    assert(lp && lp->length >= 0);
-    assert(index >= 0);
-
     if (!lp || index < 0 || lp->capacity < 0 || lp->length < 0) {
         return 0;
     }
@@ -3339,10 +3417,6 @@ PUBLIC int rAddItem(RList *lp, cvoid *item)
 {
     int index;
 
-    assert(lp);
-    assert(lp && lp->capacity >= 0);
-    assert(lp && lp->length >= 0);
-
     if (!lp || lp->capacity < 0 || lp->length < 0) {
         return R_ERR_BAD_ARGS;
     }
@@ -3359,10 +3433,6 @@ PUBLIC int rAddItem(RList *lp, cvoid *item)
 PUBLIC int rAddNullItem(RList *lp)
 {
     int index;
-
-    assert(lp);
-    assert(lp && lp->capacity >= 0);
-    assert(lp && lp->length >= 0);
 
     if (!lp || lp->capacity < 0 || lp->length < 0) {
         return R_ERR_BAD_ARGS;
@@ -3389,11 +3459,6 @@ PUBLIC int rInsertItemAt(RList *lp, int index, cvoid *item)
 {
     void **items;
     int  i;
-
-    assert(lp);
-    assert(lp && lp->capacity >= 0);
-    assert(lp && lp->length >= 0);
-    assert(index >= 0);
 
     if (!lp || lp->capacity < 0 || lp->length < 0 || index < 0) {
         return R_ERR_BAD_ARGS;
@@ -3440,9 +3505,7 @@ PUBLIC int rRemoveItem(RList *lp, cvoid *item)
     if ((index = rLookupItem(lp, item)) < 0) {
         return index;
     }
-    index = rRemoveItemAt(lp, index);
-    assert(index >= 0);
-    return index;
+    return rRemoveItemAt(lp, index);
 }
 
 /*
@@ -3452,11 +3515,6 @@ PUBLIC int rRemoveItem(RList *lp, cvoid *item)
 PUBLIC int rRemoveItemAt(RList *lp, int index)
 {
     void **items;
-
-    assert(lp);
-    assert(lp && lp->capacity > 0);
-    assert(lp && index >= 0 && index < (int) lp->capacity);
-    assert(lp && lp->length > 0);
 
     if (!lp || lp->capacity <= 0 || index < 0 || index >= (int) lp->length) {
         return R_ERR_BAD_ARGS;
@@ -3468,7 +3526,6 @@ PUBLIC int rRemoveItemAt(RList *lp, int index)
     memmove(&items[index], &items[index + 1], (lp->length - index - 1) * sizeof(void*));
     lp->length--;
     lp->items[lp->length] = 0;
-    assert(lp->length >= 0);
     return index;
 }
 
@@ -3479,7 +3536,6 @@ PUBLIC int rRemoveStringItem(RList *lp, cchar *str)
 {
     int index;
 
-    assert(lp);
     if (!lp || !str) {
         return R_ERR_BAD_ARGS;
     }
@@ -3487,16 +3543,12 @@ PUBLIC int rRemoveStringItem(RList *lp, cchar *str)
     if (index < 0) {
         return index;
     }
-    index = rRemoveItemAt(lp, index);
-    assert(index >= 0);
-    return index;
+    return rRemoveItemAt(lp, index);
 }
 
 PUBLIC void *rGetItem(RList *lp, int index)
 {
-    assert(lp);
-
-    if (index < 0 || index >= (int) lp->length) {
+    if (!lp || index < 0 || index >= (int) lp->length) {
         return 0;
     }
     return lp->items[index];
@@ -3506,9 +3558,6 @@ PUBLIC void *rGetNextItem(RList *lp, int *next)
 {
     void *item;
     int  index;
-
-    assert(next);
-    assert(next && *next >= 0);
 
     if (!lp || !next || *next < 0) {
         return 0;
@@ -3537,8 +3586,6 @@ PUBLIC void rClearList(RList *lp)
     void *data;
     int  next;
 
-    assert(lp);
-
     if (!lp) {
         return;
     }
@@ -3555,7 +3602,6 @@ PUBLIC int rLookupItem(RList *lp, cvoid *item)
 {
     uint i;
 
-    assert(lp);
     if (!lp) {
         return R_ERR_BAD_ARGS;
     }
@@ -3570,8 +3616,6 @@ PUBLIC int rLookupItem(RList *lp, cvoid *item)
 PUBLIC int rLookupStringItem(RList *lp, cchar *str)
 {
     uint i;
-
-    assert(lp);
 
     if (!lp) {
         return R_ERR_BAD_ARGS;
@@ -3600,14 +3644,21 @@ PUBLIC int rGrowList(RList *lp, int size)
         return 0;
     }
     if (size == (lp->capacity + 1)) {
+        // Check for overflow in capacity multiplication
+        if (lp->capacity > (INT_MAX - ME_R_LIST_MIN_SIZE) / 2) {
+            return R_ERR_MEMORY;  // Cannot grow safely
+        }
         len = ME_R_LIST_MIN_SIZE + (lp->capacity * 2);
     } else {
         len = max(ME_R_LIST_MIN_SIZE, size);
     }
+    // Check for overflow in size calculation
+    if (len > SSIZE_MAX / sizeof(void*)) {
+        return R_ERR_MEMORY;  // Cannot allocate safely
+    }
     memsize = len * sizeof(void*);
 
     if ((lp->items = rRealloc(lp->items, memsize)) == NULL) {
-        assert(!R_ERR_MEMORY);
         return R_ERR_MEMORY;
     }
     memset(&lp->items[lp->capacity], 0, (len - lp->capacity) * sizeof(void*));
@@ -4635,8 +4686,8 @@ static char *defaultKeyFile;               /* Default Alternatively, locate the 
 static char *defaultRevokeFile;            /* Default certificate revocation list */
 static char *defaultCiphers;               /* Default Ciphers to use for connection */
 
-static int defaultVerifyPeer = 1;
-static int defaultVerifyIssuer = 1;
+static int defaultVerifyPeer = 1;          /* Verify peer certificates */
+static int defaultVerifyIssuer = 1;        /* Verify issuer of peer certificates */
 
 /********************************** Forwards **********************************/
 
@@ -4798,6 +4849,10 @@ PUBLIC int rConfigTls(Rtls *tp, bool server)
         rSetSocketError(tp->sock, "Cannot set mbedtls defaults");
         return R_ERR_CANT_INITIALIZE;
     }
+#if defined(MBEDTLS_SSL_MAJOR_VERSION_3) && defined(MBEDTLS_SSL_MINOR_VERSION_3)
+    // Enforce TLS >= 1.2
+    mbedtls_ssl_conf_min_version(&tp->conf, MBEDTLS_SSL_MAJOR_VERSION_3, MBEDTLS_SSL_MINOR_VERSION_3);
+#endif
     mbedtls_ssl_conf_rng(&tp->conf, mbedtls_ctr_drbg_random, &ctr);
 
     /*
@@ -5340,6 +5395,10 @@ PUBLIC void *rAllocMem(size_t size)
         rAllocException(R_MEM_FAIL, size);
         return 0;
     }
+    if (size > (SIZE_MAX & ~7)) {
+        rAllocException(R_MEM_FAIL, size);
+        return 0;
+    }
     if (size == 0) {
         //  Ensure that we allocate at least 1 byte
         size = 1;
@@ -5408,9 +5467,6 @@ PUBLIC int rMemcmp(cvoid *s1, size_t s1Len, cvoid *s2, size_t s2Len)
  */
 PUBLIC size_t rMemcpy(void *dest, size_t destMax, cvoid *src, size_t nbytes)
 {
-    assert(dest);
-    assert(src);
-
     if (!dest || !src) {
         return 0;
     }
@@ -5576,8 +5632,8 @@ static char *defaultCertFile;             /* Default certificate filename */
 static char *defaultKeyFile;              /* Default Alternatively, locate the key in a file */
 static char *defaultRevokeFile;           /* Default certificate revocation list */
 static char *defaultCiphers;              /* Default Ciphers to use for connection */
-static int  defaultVerifyPeer = 1;
-static int  defaultVerifyIssuer = 1;
+static int  defaultVerifyPeer = 1;        /* Verify peer certificates */
+static int  defaultVerifyIssuer = 1;      /* Verify issuer of peer certificates */
 
 /***************************** Forward Declarations ***************************/
 
@@ -5705,7 +5761,18 @@ PUBLIC int rConfigTls(Rtls *tp, bool server)
     tp->ctx = ctx;
     tp->freeCtx = 1;
     SSL_CTX_set_ex_data(ctx, 0, (void*) tp);
-
+#if defined(TLS1_3_VERSION) && ME_ENFORCE_TLS1_3
+    #if defined(SSL_CTX_set_min_proto_version)
+        SSL_CTX_set_min_proto_version(ctx, TLS1_3_VERSION);
+    #else
+        #ifdef SSL_OP_NO_TLSv1
+            SSL_CTX_set_options(ctx, SSL_OP_NO_TLSv1);
+        #endif
+        #ifdef SSL_OP_NO_TLSv1_1
+            SSL_CTX_set_options(ctx, SSL_OP_NO_TLSv1_1);
+        #endif
+    #endif
+#endif
     if (tp->verifyIssuer < 0) {
         tp->verifyIssuer = defaultVerifyIssuer;
     }
@@ -6400,11 +6467,6 @@ PUBLIC void rSetTlsEngine(Rtls *tp, cchar *engine)
     tp->engine = sclone(engine);
 }
 
-PUBLIC void *rGetTlsRng(void)
-{
-    return NULL;
-}
-
 #else
 void opensslDummy(void)
 {
@@ -6881,7 +6943,7 @@ static ssize innerSprintf(char **buf, ssize maxsize, cchar *spec, va_list args)
                 }
                 break;
 
-#if 0 && DEPRECATE    // SECURITY
+#if DEPRECATE         // SECURITY
             case 'n': /* Count of chars seen thus far */
                 if (ctx.flags & SPRINTF_SHORT) {
                     short *count = va_arg(args, short*);
@@ -7157,13 +7219,13 @@ static void outFloat(PContext *ctx, char specchar, double value)
     }
 }
 
-static double normalizeScientific(double x, int *exponent) 
+static double normalizeScientific(double x, int *exponent)
 {
     if (x == 0.0) {
         *exponent = 0;
         return 0.0;
     }
-    int exp = (int)floor(log10(fabs(x)));
+    int    exp = (int) floor(log10(fabs(x)));
     double mantissa = x / pow(10.0, exp);
 
     // Adjust if mantissa is not in the range [1.0, 10.0)
@@ -7201,7 +7263,7 @@ static void outFloatE(PContext *ctx, char specchar, double value)
 
     ipart = (int64) mantissa;
     outNum(ctx, 10, ipart);
- 
+
     if (precision > 0) {
         BPUT(ctx, '.');
     }
@@ -7218,7 +7280,7 @@ static void outFloatE(PContext *ctx, char specchar, double value)
     }
     if (ctx->format == 'g') {
         //  Remove trailing zeros and decimal point if precision is 0
-         if (ctx->precision < 0) {
+        if (ctx->precision < 0) {
             for (last = &ctx->end[-1]; ctx->end > ctx->buf; last--, ctx->end--) {
                 if (*last == '0' || *last == '.') {
                     *last = '\0';
@@ -7226,7 +7288,7 @@ static void outFloatE(PContext *ctx, char specchar, double value)
                     break;
                 }
             }
-         }
+        }
     }
     fexp = abs(exponent);
     BPUT(ctx, (ctx->format == 'E' || ctx->format == 'G') ? 'E' : 'e');
@@ -7375,13 +7437,13 @@ PUBLIC RbTree *rbAlloc(int flags, RbCompare compare, RbFree free, void *arg)
 PUBLIC void rbFree(RbTree *rbt)
 {
     if (rbt) {
-        //  REVIEW Acceptable - This is recursive
+        //  SECURITY: Acceptable - This is recursive
         freeNode(rbt, RB_FIRST(rbt));
         rFree(rbt);
     }
 }
 
-//  REVIEW Acceptable - This is recursive
+//  SECURITY: Acceptable - This is recursive
 static void freeNode(RbTree *rbt, RbNode *n)
 {
     assert(rbt);
@@ -8236,6 +8298,11 @@ static int makeArgs(cchar *command, char ***argvp, bool argsOnly)
 
 #define ME_SOCKET_TIMEOUT    (30 * 1000)
 #define ME_HANDSHAKE_TIMEOUT (30 * 1000)
+#ifndef ME_SOCKET_MAX
+    #define ME_SOCKET_MAX    100
+#endif
+
+static int activeSockets = 0;
 
 /********************************** Forwards **********************************/
 
@@ -8261,6 +8328,9 @@ PUBLIC void rFreeSocket(RSocket *sp)
 {
     if (!sp) {
         return;
+    }
+    if (sp->flags & R_SOCKET_SERVER) {
+        activeSockets--;
     }
     if (sp->fd != INVALID_SOCKET) {
         rCloseSocket(sp);
@@ -8302,6 +8372,16 @@ PUBLIC void rCloseSocket(RSocket *sp)
         rResumeWait(sp->wait, R_READABLE | R_WRITABLE | R_TIMEOUT);
     }
     sp->flags |= R_SOCKET_CLOSED | R_SOCKET_EOF;
+}
+
+PUBLIC void rDisconnectSocket(RSocket *sp)
+{
+    if (!sp) {
+        return;
+    }
+    if (sp->fd != INVALID_SOCKET) {
+        shutdown(sp->fd, SHUT_RDWR);
+    }
 }
 
 PUBLIC void rResetSocket(RSocket *sp)
@@ -8459,6 +8539,11 @@ static void acceptSocket(RSocket *listen)
         return;
     }
     do {
+        if (++activeSockets >= ME_SOCKET_MAX) {
+            rSetSocketError(sp, "Too many active sockets");
+            rFreeSocket(sp);
+            return;
+        }
         if ((fd = accept(listen->fd, (struct sockaddr*) &addr, &addrLen)) == SOCKET_ERROR) {
             if (rGetOsError() != EAGAIN) {
                 rSetSocketError(sp, "Accept failed, errno %d", rGetOsError());
@@ -8556,6 +8641,9 @@ PUBLIC ssize rReadSocket(RSocket *sp, char *buf, ssize bufsize, Ticks deadline)
 {
     ssize nbytes;
 
+    if (!sp || !buf || bufsize <= 0 || bufsize > SSIZE_MAX / 2) {
+        return R_ERR_BAD_ARGS;
+    }
     while (1) {
         nbytes = rReadSocketSync(sp, buf, bufsize);
         if (nbytes != 0) {
@@ -8781,6 +8869,7 @@ PUBLIC int rSetSocketError(RSocket *sp, cchar *fmt, ...)
         va_start(ap, fmt);
         sp->error = sfmtv(fmt, ap);
         va_end(ap);
+        // Debug build only
         rDebug("socket", "%s", sp->error);
     }
     return R_ERR_CANT_COMPLETE;
@@ -8829,6 +8918,11 @@ PUBLIC int rGetSocketAddr(RSocket *sp, char *ipbuf, int ipbufLen, int *port)
 #if (ME_UNIX_LIKE || ME_WIN_LIKE)
     char service[NI_MAXSERV];
 #endif
+
+    // Add input validation
+    if (!sp || !ipbuf || ipbufLen <= 0) {
+        return R_ERR_BAD_ARGS;
+    }
 
     *port = 0;
     *ipbuf = '\0';
@@ -9075,8 +9169,8 @@ PUBLIC char *scamel(cchar *str)
     if ((ptr = rAlloc(size)) != 0) {
         memcpy(ptr, str, len);
         ptr[len] = '\0';
+        ptr[0] = (char) tolower((uchar) ptr[0]);
     }
-    ptr[0] = (char) tolower((uchar) ptr[0]);
     return ptr;
 }
 
@@ -9269,7 +9363,11 @@ PUBLIC char *sfmtbuf(char *buf, ssize bufsize, cchar *fmt, ...)
         return 0;
     }
     va_start(ap, fmt);
-    rVsnprintf(buf, bufsize, fmt, ap);
+    if (rVsnprintf(buf, bufsize, fmt, ap) >= bufsize) {
+        //  Truncated
+        va_end(ap);
+        return NULL;
+    }
     va_end(ap);
     return buf;
 }
@@ -9651,8 +9749,8 @@ PUBLIC char *stitle(cchar *str)
     if ((ptr = rAlloc(size)) != 0) {
         memcpy(ptr, str, len);
         ptr[len] = '\0';
+        ptr[0] = (char) toupper((uchar) ptr[0]);
     }
-    ptr[0] = (char) toupper((uchar) ptr[0]);
     return ptr;
 }
 
@@ -10736,7 +10834,20 @@ PUBLIC Time rParseIsoDate(cchar *when)
 
     memset(&ctime, 0, sizeof(ctime));
     if (when) {
+#if MACOSX
+        /*
+            For platforms that don't support %f
+         */
+        char *cp;
+        int  ms = 0;
         strptime(when, "%FT%T%z", &ctime);
+        if ((cp = strrchr(when, '.')) != NULL) {
+            ms = atoi(cp + 1);
+        }
+        return timegm(&ctime) * TPS + ms;
+#else
+        strptime(when, "%FT%T.%f%z", &ctime);
+#endif
     }
     return timegm(&ctime) * TPS;
 }
@@ -11292,12 +11403,16 @@ PUBLIC RWait *rAllocWait(int fd)
 PUBLIC void rFreeWait(RWait *wp)
 {
     if (wp) {
+        rSetWaitMask(wp, 0, 0);
         rSetItem(waitMap, wp->fd, 0);
         rResumeWait(wp, R_READABLE | R_WRITABLE | R_MODIFIED | R_TIMEOUT);
         rFree(wp);
     }
 }
 
+/*
+    Resume any waiting fiber when a wait is freed
+ */
 PUBLIC void rResumeWait(RWait *wp, int mask)
 {
     if (wp->fiber) {
@@ -11454,9 +11569,6 @@ PUBLIC int rWait(Ticks deadline)
     waiting = 1;
     rMemoryBarrier();
 
-    if (rHasDueEvents()) {
-        return 0;
-    }
     timeout = getTimeout(deadline);
 
 #if ME_EVENT_NOTIFIER == R_EVENT_EPOLL
@@ -11625,16 +11737,24 @@ static void invokeHandler(int fd, int mask)
  */
 PUBLIC int rWaitForIO(RWait *wp, int mask, Ticks deadline)
 {
-    void *value;
+    Ticks priorDeadline;
+    int   priorMask;
+    void  *value;
 
     assert(!rIsMain());
 
     if (deadline && deadline < rGetTicks()) {
         return 0;
     }
-    rSetWaitMask(wp, mask, deadline);
+    priorDeadline = wp->deadline;
+    priorMask = wp->mask;
     wp->fiber = rGetFiber();
+    rSetWaitMask(wp, mask, deadline);
+
     value = rYieldFiber(0);
+
+    wp->deadline = priorDeadline;
+    wp->mask = priorMask;
     wp->fiber = 0;
     return (int) (ssize) value;
 }
@@ -11649,7 +11769,7 @@ PUBLIC int rGetWaitFd(void)
  */
 static Ticks getTimeout(Ticks deadline)
 {
-    Ticks now, timeout;
+    Ticks nextEvent, now, timeout;
     RWait *wp;
     int   next;
 
@@ -11678,6 +11798,8 @@ static Ticks getTimeout(Ticks deadline)
         //  Reduce to MAXINT to permit callers to be able to do ticks arithmetic
         timeout = MAXINT;
     }
+    nextEvent = rGetNextDueEvent();
+    timeout = min(timeout, nextEvent - now);
     return timeout;
 }
 

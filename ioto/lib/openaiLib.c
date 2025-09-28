@@ -33,6 +33,12 @@ static Json *processResponse(Json *request, Json *response, OpenAIAgent agent, v
 
 PUBLIC int openaiInit(cchar *endpoint, cchar *key, Json *config, int flags)
 {
+    if (!endpoint || *endpoint == '\0') {
+        return R_ERR_BAD_ARGS;
+    }
+    if (!key || *key == '\0') {
+        return R_ERR_BAD_ARGS;
+    }
     if ((openai = rAllocType(OpenAI)) == NULL) {
         return R_ERR_MEMORY;
     }
@@ -45,6 +51,9 @@ PUBLIC int openaiInit(cchar *endpoint, cchar *key, Json *config, int flags)
 
 PUBLIC void openaiTerm(void)
 {
+    if (!openai) {
+        return;
+    }
     rFree(openai->endpoint);
     rFree(openai->realTimeEndpoint);
     rFree(openai->headers);
@@ -58,26 +67,33 @@ PUBLIC void openaiTerm(void)
  */
 PUBLIC Json *openaiChatCompletion(Json *props)
 {
+    Url  *up;
     Json *request, *response;
     char *data, *url;
 
-    if (!openai) {
+    if (!openai || !props || props->count == 0) {
         return NULL;
     }
-    request = props ? jsonClone(props, 0) : jsonAlloc(0);
+    response = NULL;
+    request = props ? jsonClone(props, 0) : jsonAlloc();
     if (!jsonGet(request, 0, "model", 0)) {
         jsonSet(request, 0, "model", "gpt-4o-mini", JSON_STRING);
     }
-    data = jsonToString(request, 0, NULL, JSON_STRICT);
-    rDebug("openai", "Request: %s", jsonString(request, JSON_PRETTY));
+    data = jsonToString(request, 0, NULL, JSON_JSON);
+    rDebug("openai", "Request: %s", jsonString(request, JSON_HUMAN));
     jsonFree(request);
 
     url = sfmt("%s/chat/completions", openai->endpoint);
-    response = urlPostJson(url, data, -1, "%s", openai->headers);
+    up = urlAlloc(0);
+    response = urlJson(up, "POST", url, data, -1, "%s", openai->headers);
+    if (!response) {
+        rDebug("openai", "Failed to submit request to OpenAI: %s", urlGetError(up));
+    } else {
+        rDebug("openai", "Response: %s", jsonString(response, JSON_HUMAN));
+    }
     rFree(url);
     rFree(data);
-
-    rDebug("openai", "Response: %s", jsonString(response, JSON_PRETTY));
+    urlFree(up);
     //  Caller must free response
     return response;
 }
@@ -95,10 +111,10 @@ PUBLIC Json *openaiResponses(Json *props, OpenAIAgent agent, void *arg)
     Url  *up;
     char *data, *text, *url;
 
-    if (!openai) {
+    if (!openai || !props || props->count == 0) {
         return NULL;
     }
-    request = props ? jsonClone(props, 0) : jsonAlloc(0);
+    request = props ? jsonClone(props, 0) : jsonAlloc();
     if (!jsonGet(request, 0, "model", 0)) {
         jsonSet(request, 0, "model", "gpt-4o-mini", JSON_STRING);
     }
@@ -109,9 +125,9 @@ PUBLIC Json *openaiResponses(Json *props, OpenAIAgent agent, void *arg)
         Submit the request using the authentication headers
      */
     do {
-        data = jsonToString(request, 0, NULL, JSON_STRICT);
+        data = jsonToString(request, 0, NULL, JSON_JSON);
         if (openai->flags & AI_SHOW_REQ) {
-            rInfo("openai", "Request: %s", jsonString(request, JSON_PRETTY));
+            rInfo("openai", "Request: %s", jsonString(request, JSON_HUMAN));
         }
         up = urlAlloc(0);
         url = sfmt("%s/responses", openai->endpoint);
@@ -120,7 +136,7 @@ PUBLIC Json *openaiResponses(Json *props, OpenAIAgent agent, void *arg)
         rFree(data);
 
         if (!response) {
-            rError("openai", "Failed to submit request to OpenAI: %s", urlGetError(up));
+            rTrace("openai", "Failed to submit request to OpenAI: %s", urlGetError(up));
             jsonFree(request);
             urlFree(up);
             return NULL;
@@ -128,7 +144,6 @@ PUBLIC Json *openaiResponses(Json *props, OpenAIAgent agent, void *arg)
         urlFree(up);
 
         next = processResponse(request, response, agent, arg);
-
         jsonFree(request);
         request = next;
     } while (request != NULL);
@@ -153,20 +168,13 @@ static Json *processResponse(Json *request, Json *response, OpenAIAgent agent, v
     int      count, id;
 
     if (openai->flags & AI_SHOW_RESP) {
-        rInfo("openai", "Response: %s", jsonString(response, JSON_PRETTY));
+        rInfo("openai", "Response: %s", jsonString(response, JSON_HUMAN));
     }
     if (!smatch(jsonGet(response, 0, "output[0].type", 0), "function_call")) {
         //  No agents/tools required
         return NULL;
     }
     request = jsonClone(request, 0);
-#if WAS && 0
-    if ((input = jsonGet(request, 0, "input", 0)) == 0) {
-        rError("openai", "Request is missing 'input' field");
-        return NULL;
-    }
-    jsonSetJsonFmt(request, 0, "input[$]", "{role: 'user', content: '%s'}", input);
-#endif
     jsonBlend(request, 0, "input[$]", response, 0, "output[0]", 0);
 
     /*
@@ -181,21 +189,17 @@ static Json *processResponse(Json *request, Json *response, OpenAIAgent agent, v
         name = jsonGet(response, tid, "name", 0);
         toolId = jsonGet(response, tid, "call_id", 0);
         if (name == NULL || toolId == NULL) {
-            rError("openai", "Agent call from response is missing name or call_id");
+            rTrace("openai", "Agent call from response is missing name or call_id");
             continue;
         }
         /*
             Invoke the agent/tool to process and get a result
          */
         if ((result = agent(name, request, response, arg)) == 0) {
-            rError("openai", "Agent %s returned NULL", name);
+            rTrace("openai", "Agent %s returned NULL", name);
             count = 0;
             break;
         }
-#if WAS && 0
-        jsonSetJsonFmt(request, 0, "input[$]",
-                       "{type: 'function_call_output', call_id: '%s', output: '%s'}", toolId, result);
-#endif
         id = jsonSet(request, jsonGetId(request, 0, "input"), "[$]", NULL, JSON_OBJECT);
         if (id >= 0) {
             jsonSet(request, id, "type", "function_call_output", JSON_STRING);
@@ -240,7 +244,7 @@ PUBLIC Url *openaiStream(Json *props, UrlSseProc callback, void *arg)
     if (!openai) {
         return NULL;
     }
-    request = props ? jsonClone(props, 0) : jsonAlloc(0);
+    request = props ? jsonClone(props, 0) : jsonAlloc();
     if (!jsonGet(request, 0, "model", 0)) {
         jsonSet(request, 0, "model", "gpt-4o-mini", JSON_STRING);
     }
@@ -248,8 +252,8 @@ PUBLIC Url *openaiStream(Json *props, UrlSseProc callback, void *arg)
         jsonSet(request, 0, "truncation", "auto", JSON_STRING);
     }
     jsonSetBool(request, 0, "stream", 1);
-    data = jsonToString(request, 0, NULL, JSON_STRICT);
-    rDebug("openai", "Request: %s", jsonString(request, JSON_PRETTY));
+    data = jsonToString(request, 0, NULL, JSON_JSON);
+    rDebug("openai", "Request: %s", jsonString(request, JSON_HUMAN));
     jsonFree(request);
 
     /*
@@ -281,7 +285,7 @@ PUBLIC Url *openaiRealTimeConnect(Json *props)
     Url  *up;
     char *headers, *url;
 
-    request = props ? jsonClone(props, 0) : jsonAlloc(0);
+    request = props ? jsonClone(props, 0) : jsonAlloc();
     if (!jsonGet(request, 0, "model", 0)) {
         jsonSet(request, 0, "model", "gpt-4o-realtime-preview-2024-12-17", JSON_STRING);
     }
@@ -320,13 +324,16 @@ PUBLIC Json *openaiListModels(void)
     char *url;
     Json *response;
 
+    if (!openai) {
+        return NULL;
+    }
     url = sfmt("%s/models", openai->endpoint);
     response = urlGetJson(url, "%s", openai->headers);
     rFree(url);
     return response;
 }
 
-#if FUTURE && 0
+#if FUTURE
 /*
     Create embeddings
  */
@@ -335,21 +342,20 @@ PUBLIC Json *openaiCreateEmbeddings(cchar *model, cchar *input, cchar *encodingF
     Json *obj, *response;
     char *data, *url;
 
+    if (!openai) {
+        return NULL;
+    }
     if (!model) {
         model = "text-embedding-ada-002";
     }
     if (!encodingFormat) {
         encodingFormat = "float";
     }
-#if WAS && 0
-    data = sfmt("{\"model\": \"%s\", \"input\": \"%s\", \"encoding_format\": \"%s\"}",
-                model, input, encodingFormat);
-#endif
-    obj = jsonAlloc(0);
+    obj = jsonAlloc();
     jsonSet(obj, 0, "model", model, JSON_STRING);
     jsonSet(obj, 0, "input", input, JSON_STRING);
     jsonSet(obj, 0, "encoding_format", encodingFormat, JSON_STRING);
-    data = jsonString(obj, JSON_STRICT);
+    data = jsonString(obj, JSON_JSON);
 
     url = sfmt("%s/embeddings", openai->endpoint);
     response = urlPostJson(url, data, -1, "%s", openai->headers);
@@ -366,12 +372,12 @@ PUBLIC Json *openaiFineTune(cchar *training)
     Json *obj, *response;
     char *data, *url;
 
-#if WAS && 0
-    data = sfmt("{\"training_file\": \"%s\"}", training);
-#endif
-    obj = jsonAlloc(0);
+    if (!openai) {
+        return NULL;
+    }
+    obj = jsonAlloc();
     jsonSet(obj, 0, "training_file", training, JSON_STRING);
-    data = jsonString(obj, JSON_STRICT);
+    data = jsonString(obj, JSON_JSON);
 
     url = sfmt("%s/fine_tuning/jobs", openai->endpoint);
     response = urlPostJson(url, data, -1, "%s", openai->headers);
@@ -381,7 +387,9 @@ PUBLIC Json *openaiFineTune(cchar *training)
 }
 #endif /* FUTURE*/
 #else
-void dummyOpenAI(void) {}
+void dummyOpenAI(void)
+{
+}
 #endif /* ME_COM_OPENAI */
 
 /*
