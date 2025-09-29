@@ -103,7 +103,7 @@ static void getWeather(cchar *city, double lat, double lon)
 {
     Json   *response;
     cchar  *outlook;
-    char   *url, buf[32], key[256], dim[256];
+    char   *url, buf[32], key[256], metric[256];
     double temp;
     int    weatherCode;
 
@@ -135,9 +135,10 @@ static void getWeather(cchar *city, double lat, double lon)
     SFMT(key, "/city/%s/outlook", city);
     ioSet(key, outlook);
 
-    // Set a temperature metric (keeps history). The deviceId is set in the cloud.
-    ioSetMetric("/city/temp", temp, SFMT(dim, "[{\"deviceId\": true, \"city\": \"%s\"}]", city), 0);
-    rInfo("weather", "Set /city/temp to %g for %s", temp, city);
+    // Set a temperature metric (keeps history). The deviceId is set cloud-side.
+    // ioSetMetric("/city/temp", temp, SFMT(dim, "[{\"deviceId\": true, \"city\": \"%s\"}]", city), 0);
+    ioSetMetric(SFMT(metric, "/city/%s/temp", city), temp, "[{\"deviceId\": true}]", 0);
+    rInfo("weather", "Set /city/%s/temp to %g", city, temp);
 
     rFree(url);
 }

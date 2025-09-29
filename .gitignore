@@ -24,6 +24,8 @@ ioto/build
 ioto/demo
 ioto/state
 local.json5
-state/
+state/certs/
+state/config/provision.json5
+state/config/device.json5
 weather
 

@@ -23,30 +23,32 @@ endif
 
 all: build
 
-build: library prep config $(NAME) assets.zip
+build: config library $(NAME) assets.zip
+
+config:
+	@echo "      [Info] Configuring $(NAME)"
+	mkdir -p state/config state/db state/certs
+	for f in device.json5 ioto.json5 schema.json5 local.json5 ; do \
+		if [ ! -f "state/config/$$f" -a -f "config/$$f" ] ; then \
+			cp config/$$f state/config ; \
+		fi ; \
+	done
+	if [ state/config/ioto.json5 -nt ioto/state/config/ioto.json5 ] ; then \
+		mkdir -p ioto/state/config ; \
+		cp state/config/ioto.json5 ioto/state/config ; \
+	fi
+	ioto/bin/json --overwrite name=Weather state/config/device.json5
+	ioto/bin/json --overwrite description="Weather App" state/config/device.json5
+	ioto/bin/json --overwrite model="Weather-01" state/config/device.json5
+	ioto/bin/json --overwrite app=$(NAME) state/config/ioto.json5
 
 library:
 	@make APP=blank OPTIMIZE=$(OPTIMIZE) -C ioto 
-
-prep:
-	@if [ ! -d state ] ; then \
-		cp -r ioto/state ./state ; \
-		rm -f state/config/web.json5 ; \
-		mkdir -p state/db ; \
-		ioto/bin/json name=Weather state/config/device.json5 ; \
-		ioto/bin/json description="Weather App" state/config/device.json5 ; \
-		ioto/bin/json model="Weather-01" state/config/device.json5 ; \
-		ioto/bin/json app=$(NAME) state/config/ioto.json5 ; \
-	fi
+	cp -r ioto/state/certs/* state/certs
 
 $(NAME): $(NAME).c ioto/build/bin/libioto.a
 	cc -o $(NAME) $(NAME).c $(CFLAGS)
-
-config:
-	@cp config/ioto.json5 state/config/ioto.json5
-	@if [ -f config/local.json5 ] ; then \
-		cp config/local.json5 state/config/local.json5 ; \
-	fi
+	echo "     [Built] $(NAME)"
 
 run:
 	./$(NAME)
