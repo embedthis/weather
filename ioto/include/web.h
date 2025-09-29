@@ -1,25 +1,24 @@
-/**
-    @file web.h
-    @brief Fast, secure, tiny web server for embedded applications
-    @description The Web Server Module provides a high-performance, secure web server designed
-        for embedded applications. Features include HTTP/1.0 and HTTP/1.1 support, TLS/SSL encryption,
-        WebSocket support, SSE (Server-Sent Events), file upload/download capabilities, session management
-        with XSRF protection, comprehensive input validation and sanitization, configurable request/response
-        limits, flexible routing system, and the ability to invoke C functions bound to URL routes.
+/*
+    web.h - Fast, secure, tiny web server for embedded applications
 
-        The web server is designed for embedded IoT applications and integrates tightly with the
-        Safe Runtime (r module) for memory management, fiber coroutines for concurrency, JSON5
-        configuration parsing, cryptographic functions, and WebSocket protocol support.
+    The Web Server Module provides a high-performance, secure web server designed
+    for embedded applications. Features include HTTP/1.0 and HTTP/1.1 support, TLS/SSL encryption,
+    WebSocket support, SSE (Server-Sent Events), file upload/download capabilities, session management
+    with XSRF protection, comprehensive input validation and sanitization, configurable request/response
+    limits, flexible routing system, and the ability to invoke C functions bound to URL routes.
 
-        Key architectural features:
-        - Single-threaded with fiber coroutines for concurrency
-        - Null-tolerant APIs that gracefully handle NULL arguments
-        - Cross-platform support (Linux, macOS, Windows/WSL, ESP32, FreeRTOS)
-        - Modular design with minimal interdependencies
-        - Professional HTML documentation generation via Doxygen
+    The web server is designed for embedded IoT applications and integrates tightly with the
+    Safe Runtime (r module) for memory management, fiber coroutines for concurrency, JSON5
+    configuration parsing, cryptographic functions, and WebSocket protocol support.
+
+    Key architectural features:
+    - Single-threaded with fiber coroutines for concurrency
+    - Null-tolerant APIs that gracefully handle NULL arguments
+    - Cross-platform support (Linux, macOS, Windows/WSL, ESP32, FreeRTOS)
+    - Modular design with minimal interdependencies
+    - Professional HTML documentation generation via Doxygen
 
     Copyright (c) All Rights Reserved. See details at the end of the file.
-    @stability Evolving
  */
 
 #ifndef _h_WEB

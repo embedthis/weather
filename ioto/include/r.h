@@ -1,11 +1,11 @@
-/**
-    @file r.h
-    @brief Safe Runtime (R) - Foundational C Runtime for Embedded IoT Applications
-    @description The Safe Runtime (R) is a secure, high-performance C runtime library designed specifically for
-                 embedded IoT applications. It provides a complete replacement for standard C library functions
-                 with enhanced security, memory safety, and fiber-based concurrency.
+/*
+    Safe Runtime (R) - Foundational C Runtime for Embedded IoT Applications
 
-    ## Key Features
+    The Safe Runtime (R) is a secure, high-performance C runtime library designed specifically for
+    embedded IoT applications. It provides a complete replacement for standard C library functions
+    with enhanced security, memory safety, and fiber-based concurrency.
+
+ ## Key Features
     - Fiber-based coroutine concurrency instead of traditional threading
     - Centralized memory management with automatic failure detection
     - Safe string operations that prevent buffer overflows
@@ -13,7 +13,7 @@
     - Null-tolerant APIs for robust error handling
     - Event-driven I/O with non-blocking operations
 
-    ## Architecture
+ ## Architecture
     The Safe Runtime consists of several core components:
     - **Memory Management**: Centralized allocator with failure detection (`rAlloc`, `rFree`)
     - **String Operations**: Safe replacements for C string functions (`slen`, `scopy`, `scmp`)
@@ -22,18 +22,18 @@
     - **Event System**: I/O multiplexing and event-driven programming
     - **Platform Abstraction**: Cross-platform OS dependencies via osdep layer
 
-    ## Thread Safety
+ ## Thread Safety
     All functions in this API are designed for fiber-based concurrency. Unless explicitly documented otherwise,
     functions are fiber-safe but may not be thread-safe when called from different OS threads simultaneously.
     The runtime uses a single-threaded model with fiber coroutines for concurrency.
 
-    ## Memory Management Philosophy
+ ## Memory Management Philosophy
     - Use `rAlloc()` family instead of `malloc()`/`free()`
     - No need to check for NULL returns - centralized handler manages failures
     - Most functions are null-tolerant (e.g., `rFree(NULL)` is safe)
     - Memory ownership is clearly documented for each function
 
-    ## Error Handling
+ ## Error Handling
     Functions follow consistent error reporting patterns:
     - Return values indicate success/failure where applicable
     - Null tolerance prevents crashes from invalid inputs
@@ -967,12 +967,13 @@ typedef int64 REvent;
 #define R_EVENT_EPOLL             2       /**< epoll_wait */
 #define R_EVENT_KQUEUE            3       /**< BSD kqueue */
 #define R_EVENT_SELECT            4       /**< traditional select() */
+#define R_EVENT_WSAPOLL           5       /**< Windows WSAPOLL */
 
 #ifndef ME_EVENT_NOTIFIER
     #if MACOSX || SOLARIS
         #define ME_EVENT_NOTIFIER R_EVENT_KQUEUE
     #elif WINDOWS
-        #define ME_EVENT_NOTIFIER R_EVENT_ASYNC
+        #define ME_EVENT_NOTIFIER R_EVENT_WSAPOLL
     #elif VXWORKS || ESP32
         #define ME_EVENT_NOTIFIER R_EVENT_SELECT
     #elif (LINUX || ME_BSD_LIKE) && (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 0))
@@ -1629,6 +1630,17 @@ PUBLIC char *slower(char *str);
     @stability Evolving
  */
 PUBLIC bool smatch(cchar *s1, cchar *s2);
+
+/**
+    Securely compare strings in constant time.
+    @description Compare two strings. This is similar to #scmp but it returns a boolean. This is a secure replacement
+       for strcmp.
+    @param s1 First string to compare.
+    @param s2 Second string to compare.
+    @return Returns true if the strings are equivalent, otherwise false.
+    @stability Evolving
+ */
+PUBLIC bool smatchsec(cchar *s1, cchar *s2);
 
 /**
     Compare strings ignoring case.
@@ -2909,10 +2921,9 @@ PUBLIC void print(cchar *fmt, ...);
 
 /**
     Dump the message and data block in hex to stdout
-    @param fmt Printf style format string. Variable number of arguments to print
+    @param msg Message to print
     @param block Data block to dump. Set to null if no data block
     @param len Size of data block
-    @param ... Variable number of arguments for printf data
     @stability Internal
  */
 PUBLIC void dump(cchar *msg, uchar *block, ssize len);

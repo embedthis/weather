@@ -589,7 +589,7 @@ static char *parsePrimitive(Json *json)
             return start;
 
         default:
-            if (*next != '_' && *next != '-' && *next != '.' && !isalnum((uchar) *next)) {
+            if (*next != '_' && *next != '-' && *next != '.' && !isalnum((uchar) * next)) {
                 json->next = next;
                 return start;
             }
@@ -753,7 +753,7 @@ static int parseComment(Json *json)
     Parse the text and assume ownership of the text.
     This is a fast, linear, insitu-parser. It does not use recursion or a parser stack.
     Because we parse in-situ, the text is modified as we parse it. This also means that
-    terminating values witih '\0' is somewhat delayed until we parse the next token -- 
+    terminating values witih '\0' is somewhat delayed until we parse the next token --
     otherwise we would erase the next token prematurely. This happens when parsing key
     names followed by a colon or a comma.
  */
@@ -872,7 +872,7 @@ PUBLIC int jsonParseText(Json *json, char *text, int flags)
             if (flags & JSON_STRICT_PARSE) {
                 return jerror(json, "Single and backtick quotes are not allowed in JSON mode");
             }
-            // Fall through
+        // Fall through
         case '"':
             name = parseValue(json, parent, JSON_STRING, name, parseString(json), flags);
             break;
@@ -919,7 +919,7 @@ static char *parseValue(Json *json, int parent, int type, char *name, char *valu
         return NULL;
     }
     /*
-        Object and expecting a key name. Use the value as the key name. Note: the value is not yet null 
+        Object and expecting a key name. Use the value as the key name. Note: the value is not yet null
         terminated here while we awaiting parsing the next colon, comma or closing brace/bracket.
      */
     if (!name && parent >= 0 && json->nodes[parent].type == JSON_OBJECT) {
@@ -966,7 +966,7 @@ static char *parseValue(Json *json, int parent, int type, char *name, char *valu
 static int sleuthValueType(cchar *value, ssize len, int flags)
 {
     uchar c;
-    int type;
+    int   type;
 
     if (!value) {
         return JSON_PRIMITIVE;
@@ -1005,7 +1005,7 @@ PUBLIC int jsonGetType(Json *json, int nid, cchar *key)
 
 static char *getNextTerm(char *str, char **rest, int *type)
 {
-    char *start, *end, *seps;
+    char  *start, *end, *seps;
     ssize i;
 
     seps = ".[]";
@@ -1062,8 +1062,8 @@ static char *getNextTerm(char *str, char **rest, int *type)
 static int findProperty(Json *json, int nid, cchar *property)
 {
     JsonNode *node, *np;
-    ssize index;
-    int id;
+    ssize    index;
+    int      id;
 
     if (!json || nid < 0 || nid >= json->count) {
         return R_ERR_BAD_ARGS;
@@ -1116,7 +1116,7 @@ static int findProperty(Json *json, int nid, cchar *property)
 static int jquery(Json *json, int nid, cchar *key, cchar *value, int type)
 {
     char *property, *rest;
-    int cid, id, ntype, qtype;
+    int  cid, id, ntype, qtype;
 
     if (!json || nid < 0 || nid > json->count) {
         return R_ERR_BAD_ARGS;
@@ -1187,7 +1187,7 @@ static int jquery(Json *json, int nid, cchar *key, cchar *value, int type)
 static char *copyProperty(Json *json, cchar *key)
 {
     ssize len;
-    void *p;
+    void  *p;
 
     len = slen(key) + 1;
     if (len > json->propertyLength) {
@@ -1327,7 +1327,7 @@ PUBLIC bool jsonGetBool(Json *json, int nid, cchar *key, bool defaultValue)
 PUBLIC Time jsonGetDate(Json *json, int nid, cchar *key, int64 defaultValue)
 {
     cchar *value;
-    char defbuf[16];
+    char  defbuf[16];
 
     sfmtbuf(defbuf, sizeof(defbuf), "%lld", defaultValue);
     value = jsonGet(json, nid, key, defbuf);
@@ -1340,7 +1340,7 @@ PUBLIC Time jsonGetDate(Json *json, int nid, cchar *key, int64 defaultValue)
 PUBLIC int jsonGetInt(Json *json, int nid, cchar *key, int defaultValue)
 {
     cchar *value;
-    char defbuf[16];
+    char  defbuf[16];
 
     sfmtbuf(defbuf, sizeof(defbuf), "%d", defaultValue);
     value = jsonGet(json, nid, key, defbuf);
@@ -1350,7 +1350,7 @@ PUBLIC int jsonGetInt(Json *json, int nid, cchar *key, int defaultValue)
 PUBLIC ssize jsonGetLength(Json *json, int nid, cchar *key)
 {
     JsonNode *node, *child;
-    ssize length;
+    ssize    length;
 
     if ((node = jsonGetNode(json, nid, key)) == NULL) {
         return R_ERR_CANT_FIND;
@@ -1366,7 +1366,7 @@ PUBLIC ssize jsonGetLength(Json *json, int nid, cchar *key)
 PUBLIC int64 jsonGetNum(Json *json, int nid, cchar *key, int64 defaultValue)
 {
     cchar *value;
-    char defbuf[16];
+    char  defbuf[16];
 
     sfmtbuf(defbuf, sizeof(defbuf), "%lld", defaultValue);
     value = jsonGet(json, nid, key, defbuf);
@@ -1376,7 +1376,7 @@ PUBLIC int64 jsonGetNum(Json *json, int nid, cchar *key, int64 defaultValue)
 PUBLIC double jsonGetDouble(Json *json, int nid, cchar *key, double defaultValue)
 {
     cchar *value;
-    char defbuf[16];
+    char  defbuf[16];
 
     sfmtbuf(defbuf, sizeof(defbuf), "%f", defaultValue);
     value = jsonGet(json, nid, key, defbuf);
@@ -1415,8 +1415,8 @@ PUBLIC int jsonSet(Json *json, int nid, cchar *key, cchar *value, int type)
 PUBLIC int jsonSetJsonFmt(Json *json, int nid, cchar *key, cchar *fmt, ...)
 {
     va_list ap;
-    Json *jvalue;
-    char *value;
+    Json    *jvalue;
+    char    *value;
 
     if (fmt == 0) {
         return R_ERR_BAD_ARGS;
@@ -1452,7 +1452,7 @@ PUBLIC int jsonSetDouble(Json *json, int nid, cchar *key, double value)
 PUBLIC int jsonSetDate(Json *json, int nid, cchar *key, Time value)
 {
     char *date;
-    int rc;
+    int  rc;
 
     date = rGetIsoDate(value);
     rc = jsonSet(json, nid, key, date, JSON_STRING);
@@ -1463,8 +1463,8 @@ PUBLIC int jsonSetDate(Json *json, int nid, cchar *key, Time value)
 PUBLIC int jsonSetFmt(Json *json, int nid, cchar *key, cchar *fmt, ...)
 {
     va_list ap;
-    char *value;
-    int result;
+    char    *value;
+    int     result;
 
     if (fmt == 0) {
         return 0;
@@ -1533,8 +1533,8 @@ PUBLIC int jsonRemove(Json *json, int nid, cchar *key)
 static void putValueToBuf(const Json *json, RBuf *buf, cchar *value, int flags, int indent)
 {
     cchar *cp;
-    char *end, *key;
-    int bareFlags, encode, quotes, quoteKeys;
+    char  *end, *key;
+    int   bareFlags, encode, quotes, quoteKeys;
 
     if (!buf) {
         return;
@@ -1650,9 +1650,9 @@ static int expandValue(const Json *json, RBuf *buf, cchar *key, int indent, int 
 static int nodeToString(const Json *json, int nid, int indent, int flags, RBuf *buf)
 {
     JsonNode *node;
-    char *end, *key, *key2, *sol, *start;
-    bool multiline;
-    int bareFlags, eid;
+    char     *end, *key, *key2, *sol, *start;
+    bool     multiline;
+    int      bareFlags, eid;
 
     if (!json || !buf || nid < 0 || nid > json->count || indent < 0) {
         return R_ERR_BAD_ARGS;
@@ -1771,7 +1771,7 @@ static int nodeToString(const Json *json, int nid, int indent, int flags, RBuf *
 static void compactProperties(RBuf *buf, char *sol, int indent)
 {
     char *cp, *sp, *dp;
-    int spaces;
+    int  spaces;
 
     // Count redundant spaces to see how much the line can be shortened
     for (spaces = 0, cp = sol; cp < buf->end; cp++) {
@@ -1897,11 +1897,11 @@ PUBLIC int jsonBlend(Json *dest, int did, cchar *dkey, const Json *csrc, int sid
 
 static int blendRecurse(Json *dest, int did, cchar *dkey, const Json *csrc, int sid, cchar *skey, int flags, int depth)
 {
-    Json *src, *tmpSrc;
+    Json     *src, *tmpSrc;
     JsonNode *dp, *sp, *spc, *dpc;
-    cchar *property;
-    char *srcData, *value;
-    int at, id, dlen, slen, didc, kind, pflags;
+    cchar    *property;
+    char     *srcData, *value;
+    int      at, id, dlen, slen, didc, kind, pflags;
 
     if (depth > ME_JSON_MAX_RECURSION) {
         return jerror(dest, "Blend recursion limit exceeded");
@@ -2142,9 +2142,9 @@ PUBLIC void jsonSetIndent(int indent)
  */
 PUBLIC char *jsonTemplate(Json *json, cchar *str, bool keep)
 {
-    RBuf *buf;
+    RBuf  *buf;
     cchar *value;
-    char *src, *cp, *start, *tok;
+    char  *src, *cp, *start, *tok;
 
     if (!str || schr(str, '$') == 0 || !json) {
         return sclone(str);
@@ -2188,7 +2188,7 @@ PUBLIC int jsonCheckIteration(struct Json *json, int count, int nid)
 static bool isfnumber(cchar *s, ssize len)
 {
     cchar *cp;
-    int dots;
+    int   dots;
 
     if (!s || !*s) {
         return 0;
@@ -2225,7 +2225,7 @@ PUBLIC cchar *jsonGetError(Json *json)
 static int jerror(Json *json, cchar *fmt, ...)
 {
     va_list args;
-    char *msg;
+    char    *msg;
 
     if (!json || !fmt) {
         return R_ERR_BAD_ARGS;

@@ -1,11 +1,10 @@
-/**
-    @file mqtt.h
-    MQTT client library for IoT publish/subscribe communications.
-    @description This module provides a complete MQTT 3.1.1 client implementation
+/*
+    mqtt.h - MQTT client library for IoT publish/subscribe communications.
+
+    This module provides a complete MQTT 3.1.1 client implementation
     for embedded IoT applications. Features include secure TLS connections,
     quality of service levels 0-2, retained messages, last will and testament,
     and efficient publish/subscribe operations with topic pattern matching.
-    @stability Evolving
 
     Copyright (c) All Rights Reserved. See details at the end of the file.
  */

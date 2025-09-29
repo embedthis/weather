@@ -63,10 +63,7 @@ static void showUsage(int line)
     exit(1);
 }
 
-/*
-    Must not block or call any fiber functions here
- */
-int main(int argc, char **argv)
+MAIN(ioto, int argc, char **argv, char **envp) 
 {
     cchar *argp, *home, *show;
     int   argind, background;

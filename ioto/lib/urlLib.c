@@ -1537,11 +1537,6 @@ PUBLIC cchar *urlGetError(Url *up)
     if (up->error) {
         return up->error;
     }
-    /*
-       if (up->status != URL_CODE_OK) {
-        up->error = sfmt("Error %d", up->status);
-        return up->error;
-       } */
     return NULL;
 }
 

@@ -58,7 +58,7 @@ build: prep config compile certs info
 #	Prepare to build natively using the O/S host platform
 #
 prep:
-	@if [ ! -d "include" -a ! -f ".local.mk"] ; then \
+	@if [ ! -d "include" -a ! -f ".local.mk" ] ; then \
 		echo ; echo "Ioto has not been correctly installed to use this Makefile" ; echo ; \
 		exit 255 ; \
 	fi

@@ -2613,7 +2613,6 @@ PUBLIC char *rGetTempFile(cchar *dir, cchar *prefix)
         rError("runtime", "Temporary filename too long");
         return NULL;
     }
-    ;
 
 #if ME_WIN_LIKE
     if (_mktemp_s(path, sizeof(path)) != 0) {
@@ -4073,6 +4072,10 @@ static int openLog(cchar *path)
         rError("runtime", "Cannot open log file %s, errno=%d", path, errno);
         return R_ERR_CANT_OPEN;
     }
+#if VXWORKS
+    // VxWorks does not implement O_APPEND
+    lseek(logFd, 0, SEEK_END);
+#endif
     return 0;
 }
 
@@ -5763,13 +5766,13 @@ PUBLIC int rConfigTls(Rtls *tp, bool server)
     SSL_CTX_set_ex_data(ctx, 0, (void*) tp);
 #if defined(TLS1_3_VERSION) && ME_ENFORCE_TLS1_3
     #if defined(SSL_CTX_set_min_proto_version)
-        SSL_CTX_set_min_proto_version(ctx, TLS1_3_VERSION);
+    SSL_CTX_set_min_proto_version(ctx, TLS1_3_VERSION);
     #else
         #ifdef SSL_OP_NO_TLSv1
-            SSL_CTX_set_options(ctx, SSL_OP_NO_TLSv1);
+    SSL_CTX_set_options(ctx, SSL_OP_NO_TLSv1);
         #endif
         #ifdef SSL_OP_NO_TLSv1_1
-            SSL_CTX_set_options(ctx, SSL_OP_NO_TLSv1_1);
+    SSL_CTX_set_options(ctx, SSL_OP_NO_TLSv1_1);
         #endif
     #endif
 #endif
@@ -9552,6 +9555,36 @@ PUBLIC bool smatch(cchar *s1, cchar *s2)
     return scmp(s1, s2) == 0;
 }
 
+/*
+    Secure constant time comparison
+ */
+PUBLIC bool smatchsec(cchar *s1, cchar *s2)
+{
+    ssize i, len1, len2, maxLen;
+    uchar c, lengthDiff;
+
+    len1 = slen(s1);
+    len2 = slen(s2);
+
+    /* Record if lengths differ, but don't return early */
+    lengthDiff = (uchar) (len1 != len2);
+
+    /* Always compare the maximum length to ensure constant time */
+    maxLen = (len1 > len2) ? len1 : len2;
+
+    /* Perform comparison over the full maximum length */
+    for (i = 0, c = 0; i < maxLen; i++) {
+        uchar c1 = (i < len1) ? (uchar) s1[i] : 0;
+        uchar c2 = (i < len2) ? (uchar) s2[i] : 0;
+        c |= c1 ^ c2;
+    }
+
+    /* Include length difference in the final result */
+    c |= lengthDiff;
+
+    return !c;
+}
+
 PUBLIC int sncaselesscmp(cchar *s1, cchar *s2, ssize n)
 {
     int rc;
@@ -11067,7 +11100,7 @@ struct tm *universalTime(struct tm *timep, Time time)
 
 PUBLIC int gettimeofday(struct timeval *tv, struct timezone *tz)
 {
-    #if ME_WIN_LIKE
+#if ME_WIN_LIKE
     FILETIME   fileTime;
     Time       now;
     static int tzOnce;
@@ -11096,7 +11129,7 @@ PUBLIC int gettimeofday(struct timeval *tv, struct timezone *tz)
     }
     return 0;
 
-    #elif VXWORKS
+#elif VXWORKS
     struct tm       tm;
     struct timespec now;
     time_t          t;
@@ -11117,7 +11150,7 @@ PUBLIC int gettimeofday(struct timeval *tv, struct timezone *tz)
         }
     }
     return rc;
-    #endif
+#endif /* VXWORKS */
 }
 #endif /* ME_WIN_LIKE || VXWORKS */
 
@@ -11323,15 +11356,19 @@ void vxworksDummy(void)
     Maximum number of wait events
  */
 #ifndef ME_MAX_EVENTS
-    #define ME_MAX_EVENTS 32
+    #define ME_MAX_EVENTS 128
 #endif
 
-static int waitfd = -1;
 #if ME_EVENT_NOTIFIER == R_EVENT_SELECT
 static fd_set readMask, writeMask, readEvents, writeEvents;
 static int    highestFd = -1;
+#elif ME_EVENT_NOTIFIER == R_EVENT_WSAPOLL
+static WSAPOLLFD *pollFds = 0;
+static int       pollMax = 0;
+static int       pollCount = 0;
 #endif
 
+static int   waitfd = -1;
 static RList *waitMap;
 static Ticks nextDeadline;
 static bool  waiting = 0;
@@ -11364,6 +11401,12 @@ PUBLIC int rInitWait(void)
     memset(&readEvents, 0, sizeof(readMask));
     memset(&writeEvents, 0, sizeof(writeMask));
     highestFd = -1;
+#elif ME_EVENT_NOTIFIER == R_EVENT_WSAPOLL
+    pollMax = ME_MAX_EVENTS;
+    if ((pollFds = rAlloc(sizeof(WSAPOLLFD) * pollMax)) == 0) {
+        return R_ERR_MEMORY;
+    }
+    pollCount = 0;
 #endif
     nextDeadline = MAXINT;
     return 0;
@@ -11385,6 +11428,9 @@ PUBLIC void rTermWait(void)
         waitfd = -1;
     }
 #elif ME_EVENT_NOTIFIER == R_EVENT_SELECT
+#elif ME_EVENT_NOTIFIER == R_EVENT_WSAPOLL
+    rFree(pollFds);
+    pollFds = 0;
 #endif
 }
 
@@ -11545,6 +11591,33 @@ PUBLIC void rSetWaitMask(RWait *wp, int64 mask, Ticks deadline)
     } else {
         highestFd = max(fd, highestFd);
     }
+#elif ME_EVENT_NOTIFIER == R_EVENT_WSAPOLL
+    if (fd < 0) {
+        return;
+    }
+    //  Remove existing entry for this fd
+    for (int i = 0; i < pollCount; i++) {
+        if (pollFds[i].fd == fd) {
+            pollFds[i] = pollFds[--pollCount];
+            break;
+        }
+    }
+    //  Add new entry if mask is non-zero
+    if (mask && pollCount < pollMax) {
+        pollFds[pollCount].fd = fd;
+        pollFds[pollCount].events = 0;
+        if (mask & R_READABLE) {
+            pollFds[pollCount].events |= POLLIN;
+        }
+        if (mask & R_WRITABLE) {
+            pollFds[pollCount].events |= POLLOUT;
+        }
+        if (mask & R_MODIFIED) {
+            pollFds[pollCount].events |= POLLIN;
+        }
+        pollFds[pollCount].revents = 0;
+        pollCount++;
+    }
 #endif
 }
 
@@ -11679,6 +11752,41 @@ PUBLIC int rWait(Ticks deadline)
     }
     if (numEvents == 0) {
         invokeExpired();
+    }
+#elif ME_EVENT_NOTIFIER == R_EVENT_WSAPOLL
+    int event, fd, i, numEvents;
+
+    if (pollCount == 0) {
+        Sleep((DWORD) timeout);
+        invokeExpired();
+        waiting = 0;
+        return 0;
+    }
+    if ((numEvents = WSAPoll(pollFds, pollCount, (int) timeout)) < 0) {
+        rTrace("event", "WSAPoll error %d", WSAGetLastError());
+        invokeExpired();
+        waiting = 0;
+        return 0;
+    }
+    if (numEvents == 0) {
+        invokeExpired();
+    } else {
+        for (i = 0; i < pollCount; i++) {
+            if (pollFds[i].revents == 0) continue;
+
+            fd = pollFds[i].fd;
+            event = 0;
+            if (pollFds[i].revents & (POLLIN | POLLERR | POLLHUP)) {
+                event |= R_READABLE;
+            }
+            if (pollFds[i].revents & (POLLOUT | POLLHUP)) {
+                event |= R_WRITABLE;
+            }
+            if (event) {
+                invokeHandler(fd, event);
+            }
+            pollFds[i].revents = 0;
+        }
     }
 #endif
     waiting = 0;

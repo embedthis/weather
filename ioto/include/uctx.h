@@ -1,14 +1,13 @@
-/**
-    @file uctx.h
-    High-performance user-space context switching and coroutine primitives.
-    @description This module provides portable, high-performance context switching for cooperative multitasking systems.
+/*
+    uctx.h - High-performance user-space context switching and coroutine primitives.
+
+    This module provides portable, high-performance context switching for cooperative multitasking systems.
     It supports multiple architectures including x86/x64, ARM/ARM64, MIPS, RISC-V, PowerPC, and others.
     These functions enable fiber coroutines used throughout the Ioto Agent ecosystem.
 
     The implementation uses architecture-specific assembly code for optimal performance on each supported platform,
     with fallback implementations using pthreads where native context switching is not available.
 
-    @stability Evolving
     @copyright Copyright (c) All Rights Reserved. See details at the end of the file.
  */
 #pragma once

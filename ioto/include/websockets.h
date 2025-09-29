@@ -1,12 +1,11 @@
-/**
-    @file websockets.h
-    WebSocket RFC 6455 implementation for embedded IoT applications.
-    @description This module provides a complete WebSocket implementation supporting both client and
-        server functionality with TLS support. It implements the WebSocket protocol as defined in
-        RFC 6455 for bi-directional, full-duplex communication over persistent connections.
-        The implementation is designed for embedded IoT applications with an event-driven
-        callback model and efficient memory usage.
-    @stability Evolving
+/*
+    websockets.h - WebSocket RFC 6455 implementation for embedded IoT applications.
+
+    This module provides a complete WebSocket implementation supporting both client and
+    server functionality with TLS support. It implements the WebSocket protocol as defined in
+    RFC 6455 for bi-directional, full-duplex communication over persistent connections.
+    The implementation is designed for embedded IoT applications with an event-driven
+    callback model and efficient memory usage.
  */
 
 #ifndef _h_WEBSOCKETS

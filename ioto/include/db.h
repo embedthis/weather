@@ -1,15 +1,12 @@
-/** 
-   @file db.h
-   Embedded NoSQL Document Database
-   @description High-performance embedded NoSQL document database for ANSI C applications.
+/* 
+   db.h - Embedded NoSQL Document Database
+
+   High-performance embedded NoSQL document database for ANSI C applications.
    Provides JSON5/JSON6 document storage with red/black tree indexing for efficient queries.
    Features include transaction journaling with crash recovery, schema validation and enforcement,
    time-based item expiration, result pagination for large datasets, and optional cloud
    synchronization via triggers. Designed for embedded IoT applications requiring fast,
    reliable local data storage with minimal memory footprint.
-   @stability Evolving
-
-    Copyright (c) All Rights Reserved. See details at the end of the file.
  */
 
 #pragma once

@@ -16,7 +16,7 @@
     json <options> <no-args>    # convert formats
 
     Options:
-    --blend | --bump | --check | --default | --double | --encode | --env | --expand | --export |
+    --blend | --bump | --check | --compact | --default | --double | --encode | --env | --expand | --export |
     --header | --indent | --js | --json | --json5 | --keys | --length | --one | --profile name |
     --overwrite |--remove | --stdin | --strict | --trace | --verbose | --version
 
@@ -324,7 +324,6 @@ static int parseArgs(int argc, char **argv)
         if (schr(property, '=')) {
             cmd = JSON_CMD_ASSIGN;
         } else if (property) {
-            // MOB if no property, should be convert
             cmd = JSON_CMD_QUERY;
         } else {
             cmd = JSON_CMD_CONVERT;

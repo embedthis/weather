@@ -1,6 +1,7 @@
-/**
+/*
     JSON5/JSON6 Parser and Manipulation Library
-    @description High-performance JSON parser and manipulation library for embedded IoT applications.
+
+    High-performance JSON parser and manipulation library for embedded IoT applications.
     Supports both traditional JSON and relaxed JSON5/JSON6 syntax with extended features for ease of use.
 
     This library provides a complete JSON processing solution including:
@@ -19,6 +20,7 @@
     - Multi-line strings using backtick quotes
     - JavaScript-style primitives (undefined, null)
     - Keyword 'undefined' support
+    - Compacted output mode with minimal whitespace
 
     The library is designed for embedded developers who need efficient JSON processing
     with minimal memory overhead and high performance characteristics.
@@ -28,9 +30,9 @@
     - An empty string is allowed and returns an empty JSON instance.
     - Similarly a top level whitespace string is allowed and returns an empty JSON instance.
 
-    Use another tool if you need strict JSON validation.
+    Use another tool if you need strict JSON validation of input text.
 
-    @stability Evolving
+    Copyright (c) All Rights Reserved. See copyright notice at the bottom of the file.
  */
 
 #pragma once
@@ -231,27 +233,27 @@ struct JsonNode;
     @stability Evolving
  */
 typedef struct Json {
-    struct JsonNode *nodes;              /**< Array of JSON nodes forming the tree structure */
+    struct JsonNode *nodes;          /**< Array of JSON nodes forming the tree structure */
 #if R_USE_EVENT
-    REvent event;                        /**< Event structure for asynchronous saving operations */
+    REvent event;                    /**< Event structure for asynchronous saving operations */
 #endif
-    char *text;                          /**< Original JSON text being parsed (will be modified during parsing) */
-char *end;                           /**< Pointer to one byte past the end of the text buffer */
-char *next;                          /**< Current parsing position in the text buffer */
-char *path;                          /**< File path if JSON was loaded from a file (for error reporting) */
-char *error;                         /**< Detailed error message from parsing failures */
-char *property;                      /**< Internal buffer for building property names during parsing */
-ssize propertyLength;                /**< Current allocated size of the property buffer */
-    char *value;                         /**< Cached serialized string result from jsonString() calls */
-    uint size;                           /**< Total allocated capacity of the nodes array */
-    uint count;                          /**< Number of nodes currently used in the tree */
-    uint lineNumber : 16;                /**< Current line number during parsing (for error reporting) */
-    uint lock : 1;                       /**< Lock flag preventing modifications when set */
-    uint flags : 7;                      /**< Internal parser flags (reserved for library use) */
-    uint userFlags : 8;                  /**< Application-specific flags available for user use */
+    char *text;                      /**< Original JSON text being parsed (will be modified during parsing) */
+    char *end;                       /**< Pointer to one byte past the end of the text buffer */
+    char *next;                      /**< Current parsing position in the text buffer */
+    char *path;                      /**< File path if JSON was loaded from a file (for error reporting) */
+    char *error;                     /**< Detailed error message from parsing failures */
+    char *property;                  /**< Internal buffer for building property names during parsing */
+    ssize propertyLength;            /**< Current allocated size of the property buffer */
+    char *value;                     /**< Cached serialized string result from jsonString() calls */
+    uint size;                       /**< Total allocated capacity of the nodes array */
+    uint count;                      /**< Number of nodes currently used in the tree */
+    uint lineNumber : 16;            /**< Current line number during parsing (for error reporting) */
+    uint lock : 1;                   /**< Lock flag preventing modifications when set */
+    uint flags : 7;                  /**< Internal parser flags (reserved for library use) */
+    uint userFlags : 8;              /**< Application-specific flags available for user use */
 #if JSON_TRIGGER
-    JsonTrigger trigger;                 /**< Optional callback function for monitoring changes */
-    void *triggerArg;                    /**< User argument passed to the trigger callback */
+    JsonTrigger trigger;             /**< Optional callback function for monitoring changes */
+    void *triggerArg;                /**< User argument passed to the trigger callback */
 #endif
 } Json;
 

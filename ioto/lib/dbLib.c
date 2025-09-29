@@ -141,6 +141,7 @@ PUBLIC Db *dbOpen(cchar *path, cchar *schema, int flags)
         if (flags & DB_OPEN_RESET) {
             dbReset(path);
         }
+        //  SECURITY Acceptable: developers responsibility to validate the path
         db->path = sclone(path);
         db->journalPath = sfmt("%s.jnl", db->path);
         db->maxJournalSize = DB_MAX_LOG_SIZE;
@@ -1694,7 +1695,7 @@ static void freeItem(Db *db, DbItem *item)
         item->key = 0;
     }
     clearItem(item);
-    free(item);
+    rFree(item);
 }
 
 static void clearItem(DbItem *item)
@@ -2272,9 +2273,9 @@ static int compareItems(cvoid *n1, cvoid *n2, Env *env)
     }
     if (env && env->compare && smatch(env->compare, "begins")) {
         //  The d1->key length was precomputed in searchLen
-        return strncmp(d1->key, d2->key, env->searchLen);
+        return sncmp(d1->key, d2->key, env->searchLen);
     }
-    return strcmp(d1->key, d2->key);
+    return scmp(d1->key, d2->key);
 }
 
 PUBLIC cchar *dbGetError(Db *db)

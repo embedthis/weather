@@ -1,13 +1,14 @@
-/**
-    Operating system dependent abstraction layer.
-    @description This header provides a comprehensive cross-platform abstraction layer for embedded IoT applications.
+/*
+    osdep.h - Operating system dependent abstraction layer.
+
+    This header provides a comprehensive cross-platform abstraction layer for embedded IoT applications.
     It defines standard types, platform detection constants, compiler abstractions, and operating system compatibility
     macros to enable portability across diverse embedded and desktop systems. This is the foundational module consumed
     by all other EmbedThis modules and must be included first in any source file. The module automatically detects
     the target platform's CPU architecture, operating system, compiler, and endianness to provide consistent behavior
     across ARM, x86, MIPS, PowerPC, SPARC, RISC-V, Xtensa, and other architectures running on Linux, macOS, Windows,
     VxWorks, FreeRTOS, ESP32, and other operating systems.
-    @stability Evolving
+
     Copyright (c) All Rights Reserved. See details at the end of the file.
  */
 

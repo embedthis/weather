@@ -1,11 +1,9 @@
 
-/**
-    @file url.h
-    HTTP client library for embedded IoT applications.
-    @description The URL module provides a lightweight, streaming HTTP client optimized for embedded IoT devices.
-        Supports HTTP/HTTPS, WebSockets, and Server-Sent Events (SSE) with fiber-based concurrency.
-        Uses the R runtime for memory management and cross-platform compatibility.
-    @stability Evolving
+/*
+    url.h - HTTP client library for embedded IoT applications.
+    The URL module provides a lightweight, streaming HTTP client optimized for embedded IoT devices.
+    Supports HTTP/HTTPS, WebSockets, and Server-Sent Events (SSE) with fiber-based concurrency.
+    Uses the R runtime for memory management and cross-platform compatibility.
 
     Copyright (c) All Rights Reserved. See details at the end of the file.
  */
@@ -601,7 +599,6 @@ PUBLIC ssize urlWriteFile(Url *up, cchar *path);
     @param up URL object
     @param headers Optional request headers. This parameter is a printf style formatted pattern with following
         arguments. Individual header lines must be terminated with "\r\n".
-    @param ... Optional header arguments.
     @return Zero if successful
     @stability Evolving
  */

@@ -5,6 +5,8 @@
 /********************************* Includes ***********************************/
 #include "ioto.h"
 
+#if SERVICES_DEMO
+
 #if ESP32
 #include "driver/gpio.h"
 #include "rom/gpio.h"
@@ -24,7 +26,7 @@
 
 /*
     Flag to indicate that on-demand MQTT connections are used
- */
+*/
 static int onDemand = 0;
 
 /*************************** Forward Declarations *****************************/
@@ -175,7 +177,6 @@ static void demo(void)
     }
     rInfo("demo", "Demo complete");
     rSignal("demo:complete");
-    // rStop();
 }
 
 /*
@@ -212,6 +213,10 @@ static void customCommand(void *ctx, DbItem *item)
         rError("demo", "Failed to run custom command: %s", output);
     }
 }
+#else
+int ioStart(void) {}
+int ioStop(void) {}
+#endif /* SERVICES_DEMO */
 
 /*
     Copyright (c) Embedthis Software. All Rights Reserved.

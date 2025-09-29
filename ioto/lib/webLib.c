@@ -1081,7 +1081,6 @@ static void freeWebFields(Web *web, bool keepAlive)
     rFree(web->path);
     rFree(web->redirect);
     rFree(web->securityToken);
-    // rFreeBuf(web->trace);
     rFreeBuf(web->rxHeaders);
     rFreeHash(web->txHeaders);
     jsonFree(web->qvars);

@@ -1,9 +1,7 @@
-/**
-    @file ioto.h
-    @brief Ioto Device Agent API
-    @description Complete IoT solution combining multiple embedded C libraries into a unified agent
-    for local and cloud-based device management. This header provides the main API for the Ioto Device Agent,
-    including cloud connectivity, database services, web server, MQTT client, and device provisioning.
+/*
+    ioto.h - Ioto Device Agent API
+
+    Complete IoT solution combining multiple embedded C libraries into a unified agent for local and cloud-based device management. This header provides the main API for the Ioto Device Agent, including cloud connectivity, database services, web server, MQTT client, and device provisioning.
 
     The Ioto Device Agent is designed for embedded IoT applications and provides:
     - Cloud connectivity and device management
@@ -16,7 +14,6 @@
     - AWS IoT Core integration
 
     Copyright (c) All Rights Reserved. See details at the end of the file.
-    @stability Evolving
  */
 
 #ifndef _h_IOTO_H

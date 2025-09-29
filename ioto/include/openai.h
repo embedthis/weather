@@ -1,11 +1,10 @@
-/**
-    @file openai.h
-    @brief OpenAI API client library for embedded systems
-    @description This library provides a C interface to OpenAI's APIs including Chat Completion,
+/*
+    openai.h - OpenAI API client library for embedded systems
+
+    This library provides a C interface to OpenAI's APIs including Chat Completion,
     Responses API with agent callbacks, Real-Time API with WebSocket connections, and streaming
     responses with Server-Sent Events. Built on the EmbedThis Safe Runtime foundation with
     modular integration for JSON parsing, URL handling, and cryptographic functions.
-    @stability Evolving
 
     Copyright (c) All Rights Reserved. See details at the end of the file.
  */

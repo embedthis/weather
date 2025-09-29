@@ -1,11 +1,10 @@
-/**
+/*
     Cryptographic library for embedded IoT applications.
-    @description The crypt library provides a minimal set of cryptographic functions for connected devices.
-        It provides Base64 encoding/decoding, SHA1/SHA256 hashing, Bcrypt password hashing, and random data generation.
-        Designed for minimal memory footprint with optional MbedTLS/OpenSSL backend integration.
-        MD5 is provided for legacy backwards compatibility and is not recommended for new applications.
-    @stability Evolving
-    @file crypt.h
+
+    The crypt library provides a minimal set of cryptographic functions for connected devices.
+    It provides Base64 encoding/decoding, SHA1/SHA256 hashing, Bcrypt password hashing, and random data generation.
+    Designed for minimal memory footprint with optional MbedTLS/OpenSSL backend integration.
+    MD5 is provided for legacy backwards compatibility and is not recommended for new applications.
  */
 #pragma once
 
