@@ -523,6 +523,7 @@
                             icon: '$leftArrow',
                             menu: 'Log Out',
                             component: 'Logout',
+                            enable: 'mobile',
                             properties: {},
                             role: null,
                         },
