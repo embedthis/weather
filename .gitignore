@@ -28,4 +28,4 @@ state/certs/
 state/config/provision.json5
 state/config/device.json5
 weather
-
+xcode/**

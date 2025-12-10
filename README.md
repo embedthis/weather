@@ -1,10 +1,10 @@
 # Ioto Sample Weather App
 
-This is a demonstration app that simulates a simple device sensor app. It creates a simulated weather station that sends weather information to the cloud.
+This is a demonstration app that simulates a simple device sensor app by creating a simulated weather station that sends weather information to the cloud.
 
-It uses the HTTP client APIs to get weather information simulating a local device sensor.  We do this so the sample can run on any platform that has an HTTP client.
+It uses the Ioto HTTP client APIs to get weather information simulating a local device sensor.
 
-The app captures user input to select the desired city.
+The app captures user input to select the desired city and displays the weather information in the device app.
 
 <img src="https://github.com/embedthis/weather/blob/main/doc/weather-app.avif" width="300" alt="Weather App">
 
