@@ -1,9 +1,26 @@
 
 /*
     url.h - HTTP client library for embedded IoT applications.
+
     The URL module provides a lightweight, streaming HTTP client optimized for embedded IoT devices.
-    Supports HTTP/HTTPS, WebSockets, and Server-Sent Events (SSE) with fiber-based concurrency.
+    Supports HTTP/HTTPS, WebSockets, Server-Sent Events (SSE), and HTTP authentication with fiber-based concurrency.
     Uses the R runtime for memory management and cross-platform compatibility.
+
+    THREAD SAFETY:
+    This module is NOT thread-safe. Url objects must not be accessed from multiple OS threads simultaneously.
+    The module uses single-threaded execution with fiber coroutines for concurrency. All URL operations
+    should be performed within the same thread context. If multi-threaded access is required, the embedding
+    application must provide external synchronization (mutexes, locks, etc.).
+
+    SECURITY CONSIDERATIONS:
+    - Target Audience: Embedded IoT devices connecting to known, controlled servers (IoT cloud endpoints,
+      internal APIs), not for general-purpose web browsing.
+    - Developer Responsibility: Applications must validate and sanitize all user-controlled input
+      (usernames, URLs, custom headers) before passing to this library.
+    - Server-Controlled Data: The library validates server-provided data (WWW-Authenticate challenges,
+      response headers) to prevent injection attacks and DoS conditions.
+    - Authentication: Supports HTTP Basic and Digest authentication. Basic auth sends credentials in
+      base64 (not encrypted) - use HTTPS in production. Digest auth supports MD5 and SHA-256 algorithms.
 
     Copyright (c) All Rights Reserved. See details at the end of the file.
  */
@@ -18,15 +35,19 @@
 #include "r.h"
 #include "json.h"
 
-#if ME_COM_WEBSOCKETS
-#include "websockets.h"
+#if ME_COM_WEBSOCK
+#include "websock.h"
 #endif
 
 /*********************************** Defines **********************************/
 #if ME_COM_URL
 
 #ifndef URL_SSE
-    #define URL_SSE 1
+    #define URL_SSE  1
+#endif
+
+#ifndef URL_AUTH
+    #define URL_AUTH 1
 #endif
 
 #ifdef __cplusplus
@@ -91,6 +112,9 @@ struct Url;
 #define URL_SHOW_RESP_BODY              0x8  /**< Trace response body */
 #define URL_SHOW_RESP_HEADERS           0x10 /**< Trace response headers */
 #define URL_HTTP_0                      0x20 /**< Use HTTP/1.0 */
+#define URL_NO_LINGER                   0x40 /**< Use no linger and issue RST on close instead of FIN */
+#define URL_SHOW_FLAGS                  (URL_SHOW_REQ_BODY | URL_SHOW_REQ_HEADERS | URL_SHOW_RESP_BODY | \
+                                         URL_SHOW_RESP_HEADERS)
 
 #if URL_SSE
 /**
@@ -119,6 +143,7 @@ typedef struct Url {
     uint finalized : 1;            /**< The request body has been fully written */
     uint gotResponse : 1;          /**< Response has been read */
     uint inCallback : 1;           /**< SSE callback is in progress */
+    uint linger: 1;                /**< Connection should be kept alive for subsequent requests */
     uint needFree : 1;             /**< Free the URL object */
     uint nonblock : 1;             /**< Don't block in SSE callback */
     uint protocol : 2;             /**< Use HTTP/1.0 without keep-alive. Defaults to HTTP/1.1. */
@@ -126,7 +151,7 @@ typedef struct Url {
     uint upgraded : 1;             /**< WebSocket upgrade has been completed */
     uint wroteHeaders : 1;         /**< Tx headers have been written */
 
-    uint flags;                    /**< Alloc flags */
+    int flags;                     /**< Alloc flags */
 
     char *url;                     /**< Request URL*/
     char *urlbuf;                  /**< Parsed and tokenized URL*/
@@ -140,8 +165,8 @@ typedef struct Url {
 
     // SECURITY Acceptable: Important to note that rxLen is ssize and overflow is checked
     ssize rxLen;                   /**< Length of rx body */
-    ssize rxRemaining;             /**< Remaining rx data to read from the socket */
-    ssize bufLimit;                /**< Maximum number of bytes to buffer from the response */
+    size_t rxRemaining;            /**< Remaining rx data to read from the socket */
+    size_t bufLimit;               /**< Maximum number of bytes to buffer from the response */
 
     RBuf *rxHeaders;               /**< Buffer for Rx headers */
     RBuf *txHeaders;               /**< Buffer for Tx headers */
@@ -163,15 +188,30 @@ typedef struct Url {
     REvent abortEvent;             /**< Abort event */
     void *sseArg;                  /**< SSE callback argument */
 
-#if ME_COM_WEBSOCKETS
+#if URL_AUTH
+    uint authRetried;              /**< Request has been retried with authentication */
+    char *authType;                /**< Authentication type: "basic", "digest", or NULL for auto-detect */
+    char *username;                /**< Username for authentication */
+    char *password;                /**< Password for authentication */
+    char *realm;                   /**< Digest auth realm */
+    char *nonce;                   /**< Digest auth nonce */
+    char *qop;                     /**< Digest auth quality of protection */
+    char *opaque;                  /**< Digest auth opaque value */
+    char *algorithm;               /**< Digest auth algorithm (MD5 or SHA-256 only) */
+    uint nc;                       /**< Digest auth nonce count */
+#endif
+
+#if ME_COM_WEBSOCK
     WebSocket *webSocket;          /**< WebSocket object */
 #endif
+
 #if URL_SSE
     UrlSseProc sseProc;            /**< SSE callback */
     uint retries;                  /**< Number of retries for SSE */
     uint maxRetries;               /**< Maximum of retries for SSE */
     ssize lastEventId;             /**< Last event ID (SSE) */
 #endif
+
 } Url;
 
 /**
@@ -211,18 +251,29 @@ PUBLIC int urlError(Url *up, cchar *message, ...);
     code. This routine will return after the response status and headers have been read and before the response body
     data has been read. Use $urlRead or $urlGetResponse to read the response body data.
     This routine will block the current fiber while waiting for the request to respond. Other fibers continue to run.
+
+    IMPORTANT - URI ENCODING FOR DIGEST AUTHENTICATION:
+    When using Digest authentication with URIs containing special characters (spaces, %, #, etc.),
+    the application must ensure the URL parameter is properly encoded as it will appear in the HTTP
+    Request-Line. The library uses the URI "as-is" for digest HA2 calculation per RFC 7616 Section 3.4.3.
+    Mismatch between client and server URI encoding will cause authentication failure.
+
+    Example: Use "https://example.com/path%20with%20spaces" not "https://example.com/path with spaces"
+
     @param up URL object.
     @param method HTTP method verb.
-    @param url HTTP URL to fetch
+    @param url HTTP URL to fetch. For Digest authentication, this must be properly URL-encoded to match
+        the Request-Line format. The application is responsible for URL encoding.
     @param data Body data for request. Set to NULL if none.
-    @param size Size of body data for request. Set to 0 if none.
+    @param size Size of body data for request. Set to 0 if none. If set to zero and data is provided, it is assumed to
+       be a string and the size is calculated.
     @param headers Optional request headers. This parameter is a printf style formatted pattern with following
         arguments. Individual header lines must be terminated with "\r\n".
     @param ... Optional header arguments.
     @return Response HTTP status code. Use urlGetResponse or urlRead to read the response.
     @stability Evolving
  */
-PUBLIC int urlFetch(Url *up, cchar *method, cchar *url, cvoid *data, ssize size, cchar *headers, ...);
+PUBLIC int urlFetch(Url *up, cchar *method, cchar *url, cvoid *data, size_t size, cchar *headers, ...);
 
 /**
     Fetch a URL and return a JSON response if the HTTP request is successful.
@@ -243,7 +294,7 @@ PUBLIC int urlFetch(Url *up, cchar *method, cchar *url, cvoid *data, ssize size,
         Caller must free via jsonFree().
     @stability Evolving
  */
-PUBLIC Json *urlJson(Url *up, cchar *method, cchar *url, cvoid *data, ssize size, cchar *headers, ...);
+PUBLIC Json *urlJson(Url *up, cchar *method, cchar *url, cvoid *data, size_t size, cchar *headers, ...);
 
 /**
     Finalize the request.
@@ -396,6 +447,15 @@ PUBLIC int urlGetStatus(Url *up);
 PUBLIC int urlParse(Url *up, cchar *url);
 
 /**
+    Parse the authentication challenge from the response headers.
+    @description This will parse the authentication challenge from the response headers.
+    @param up URL object
+    @return True if the authentication challenge is parsed successfully.
+    @stability Evolving
+ */
+PUBLIC bool urlParseAuthChallenge(Url *up);
+
+/**
     Issue a HTTP POST request.
     @description This will issue a HTTP POST request to the specified URL with the optional body data.
         Regardless of the HTTP status, this will return the response body.
@@ -408,7 +468,7 @@ PUBLIC int urlParse(Url *up, cchar *url);
     @return Response body if successful, otherwise null. Caller must free.
     @stability Evolving
  */
-PUBLIC char *urlPost(cchar *url, cvoid *data, ssize size, cchar *headers, ...);
+PUBLIC char *urlPost(cchar *url, cvoid *data, size_t size, cchar *headers, ...);
 
 /**
     Issue a HTTP POST request and return parsed JSON.
@@ -423,7 +483,7 @@ PUBLIC char *urlPost(cchar *url, cvoid *data, ssize size, cchar *headers, ...);
         the request returns NULL. Caller must free via jsonFree().
     @stability Evolving
  */
-PUBLIC Json *urlPostJson(cchar *url, cvoid *data, ssize len, cchar *headers, ...);
+PUBLIC Json *urlPostJson(cchar *url, cvoid *data, size_t len, cchar *headers, ...);
 
 /**
     Low level read routine to read response data for a request.
@@ -436,7 +496,7 @@ PUBLIC Json *urlPostJson(cchar *url, cvoid *data, ssize len, cchar *headers, ...
     @return The number of bytes read. Returns < 0 on errors. Returns 0 when there is no more data to read.
     @stability Evolving
  */
-PUBLIC ssize urlRead(Url *up, char *buf, ssize bufsize);
+PUBLIC ssize urlRead(Url *up, char *buf, size_t bufsize);
 
 /**
     Set the maximum number of bytes to buffer from the response.
@@ -446,7 +506,7 @@ PUBLIC ssize urlRead(Url *up, char *buf, ssize bufsize);
     @param limit Maximum number of bytes to buffer. Set to 0 for unlimited buffering.
     @stability Evolving
  */
-PUBLIC void urlSetBufLimit(Url *up, ssize limit);
+PUBLIC void urlSetBufLimit(Url *up, size_t limit);
 
 /**
     Define the certificates to use with TLS connections.
@@ -470,6 +530,36 @@ PUBLIC void urlSetCerts(Url *up, cchar *ca, cchar *key, cchar *cert, cchar *revo
     @stability Evolving
  */
 PUBLIC void urlSetCiphers(Url *up, cchar *ciphers);
+
+#if URL_AUTH
+/**
+    Set authentication credentials for HTTP requests.
+    @description Configure username and password for HTTP authentication. The library will automatically
+        handle Basic and Digest authentication challenges (401 responses with WWW-Authenticate headers).
+        When a 401 response is received, the library will parse the authentication challenge and retry
+        the request with appropriate credentials.
+
+    IMPORTANT SECURITY CONSIDERATIONS:
+    - Developer Responsibility: The application must validate and sanitize the username parameter
+        before calling this function. The library escapes quotes in digest auth per RFC 7616, but
+        the application is responsible for validating input from untrusted sources.
+    - Basic Authentication: Credentials are sent in base64-encoded form (not encrypted). Use HTTPS
+        for production deployments. A debug warning is issued when Basic auth is used over HTTP.
+    - Digest Authentication: Supports MD5 (RFC 2617) and SHA-256 (RFC 7616) algorithms.
+        The qop="auth" mode is supported; qop="auth-int" is not supported.
+    - Nonce Handling: The server manages nonce expiration via the stale parameter. The library
+        automatically handles stale nonces by clearing cached challenge data and retrying.
+
+    @param up URL object to configure
+    @param username Username for authentication. Set to NULL to disable authentication.
+        The application must validate this parameter if it comes from untrusted input.
+    @param password Password for authentication. May be NULL if username is NULL.
+    @param authType Optional authentication type: "basic" or "digest". Set to NULL for auto-detection
+        based on server challenge.
+    @stability Evolving
+ */
+PUBLIC void urlSetAuth(Url *up, cchar *username, cchar *password, cchar *authType);
+#endif
 
 /**
     Set the default request timeout to use for future URL instances.
@@ -560,11 +650,11 @@ PUBLIC int urlUpload(Url *up, RList *files, RHash *forms, cchar *headers, ...);
     @description This routine will block the current fiber. Other fibers continue to run.
     @param up URL object
     @param data Buffer of data to write. Set to NULL to finalize the request body.
-    @param size Length of data to write. Set to -1 to calculate the length of data as a null terminated string.
+    @param size Length of data to write. Set to 0 to calculate the length of data as a null terminated string.
     @return The number of bytes actually written. On errors, returns a negative status code.
     @stability Evolving
  */
-PUBLIC ssize urlWrite(Url *up, cvoid *data, ssize size);
+PUBLIC ssize urlWrite(Url *up, cvoid *data, size_t size);
 
 /**
     Write formatted body data for a request
@@ -604,7 +694,7 @@ PUBLIC ssize urlWriteFile(Url *up, cchar *path);
  */
 PUBLIC int urlWriteHeaders(Url *up, cchar *headers);
 
-#if ME_COM_WEBSOCKETS
+#if ME_COM_WEBSOCK
 /**
     Issue a simple WebSocket request.
     @description Establishes a WebSocket connection and processes messages until the connection closes.
@@ -635,32 +725,27 @@ PUBLIC WebSocket *urlGetWebSocket(Url *up);
     @param up URL object with WebSocket connection
     @param callback Callback function to invoke for WebSocket events
     @param arg User argument to pass to the callback function
-    @stability Evolving
- */
-PUBLIC void urlWebSocketAsync(Url *up, WebSocketProc callback, void *arg);
-#endif /* ME_COM_WEBSOCKETS */
-
-#if URL_SSE
-/**
-    Wait for Server-Sent Events.
-    @description Block the current fiber waiting for SSE events. Other fibers continue to run.
-        Events will be delivered via the SSE callback if configured.
-    @param up URL object with active SSE connection
     @return Zero if successful, negative error code on failure.
     @stability Evolving
  */
-PUBLIC int urlSseWait(Url *up);
+PUBLIC int urlWebSocketAsync(Url *up, WebSocketProc callback, void *arg);
+#endif /* ME_COM_WEBSOCK */
 
+#if URL_SSE
 /**
-    Define an SSE async callback.
-    @description Configure asynchronous Server-Sent Event handling. The callback function will be
-        invoked when SSE events are received from the server.
-    @param up URL object with SSE connection
-    @param proc Callback function to invoke for SSE events
+    Run the SSE event loop until the connection closes.
+    @description Block the current fiber waiting for SSE events. Other fibers continue to run.
+        The callback is invoked for each SSE event received. The loop continues until the
+        connection closes, an error occurs, or the deadline is reached.
+    @param up URL object with established SSE connection (after urlFetch/urlFinalize)
+    @param callback Callback function to invoke for SSE events
     @param arg User argument to pass to the callback function
+    @param buf Buffer containing any pre-read data from HTTP response (can be NULL)
+    @param deadline System time in ticks for timeout (0 for no timeout)
+    @return Zero on orderly close, negative error code on failure.
     @stability Evolving
  */
-PUBLIC void urlSseAsync(Url *up, UrlSseProc proc, void *arg);
+PUBLIC int urlSseRun(Url *up, UrlSseProc callback, void *arg, RBuf *buf, Ticks deadline);
 
 /**
     Get Server-Sent Events from a URL.
@@ -687,18 +772,6 @@ PUBLIC int urlGetEvents(cchar *uri, UrlSseProc proc, void *arg, char *headers, .
 PUBLIC void urlSetMaxRetries(Url *up, int maxRetries);
 #endif
 
-#if URL_SSE || ME_COM_WEBSOCKETS
-/**
-    Wait for the connection to be closed.
-    @description Block the current fiber until the connection closes. Used for SSE and WebSocket connections
-        to keep the connection alive until the remote end closes it.
-    @param up URL object with active connection
-    @return Zero when connection closes normally, negative error code on failure.
-    @stability Evolving
- */
-PUBLIC int urlWait(Url *up);
-#endif /* URL_SSE || ME_COM_WEBSOCKETS */
-
 #ifdef __cplusplus
 }
 #endif
@@ -707,6 +780,6 @@ PUBLIC int urlWait(Url *up);
 #endif /* _h_URL */
 
 /*
-    Copyright (c) Michael O'Brien. All Rights Reserved.
+    Copyright (c) Embedthis Software. All Rights Reserved.
     This is proprietary software and requires a commercial license from the author.
  */

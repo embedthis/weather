@@ -1,0 +1,33 @@
+{
+    enable: 'manual',
+    inherit: ['compiler', 'environment'],
+    execution: {
+        workers: 1,
+    },
+    __environment: {
+        // Enable sanitizer builds
+        SANITIZE: '1',
+        // AddressSanitizer configuration
+        ASAN_OPTIONS: 'halt_on_error=0:log_path=crashes/asan:symbolize=1',
+        // UndefinedBehaviorSanitizer configuration
+        UBSAN_OPTIONS: 'print_stacktrace=1:halt_on_error=0:log_path=crashes/ubsan',
+        // Symbolizer path for macOS (Homebrew LLVM)
+        ASAN_SYMBOLIZER_PATH: '/opt/homebrew/opt/llvm/bin/llvm-symbolizer',
+    },
+    execution: {
+        workers: 1,
+        timeout: 36000,
+    },
+    services: {
+        cleanup: './cleanup.sh',
+        prep: './prep.sh',
+        setup: './setup.sh',
+        prepTimeout: 60,
+        healthCheck: {
+            type: 'http',
+            url: 'http://localhost:4200',
+            timeout: 120, // 2 minutes to build with sanitizers
+            interval: 500, // Check every 500ms
+        },
+    },
+}

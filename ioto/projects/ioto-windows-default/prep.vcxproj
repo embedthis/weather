@@ -2,7 +2,7 @@
     <Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
 
       <PropertyGroup Label="Globals">
-        <ProjectGuid>{2b3540b4-3329-4600-ad37-80da214c4e4c}</ProjectGuid>
+        <ProjectGuid>{1c563e9d-3e96-45a1-b578-afdaf5940169}</ProjectGuid>
         <RootNamespace />
         <Keyword>Win32Proj</Keyword>
       </PropertyGroup>
@@ -24,6 +24,14 @@
           <Configuration>Release</Configuration>
           <Platform>x64</Platform>
         </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|arm64">
+          <Configuration>Debug</Configuration>
+          <Platform>arm64</Platform>
+        </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|arm64">
+          <Configuration>Release</Configuration>
+          <Platform>arm64</Platform>
+        </ProjectConfiguration>
   </ItemGroup>
     
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
@@ -42,6 +50,16 @@
         <PlatformToolset>v141</PlatformToolset>
       </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+        <ConfigurationType></ConfigurationType>
+        <CharacterSet>NotSet</CharacterSet>
+        <PlatformToolset>v141</PlatformToolset>
+      </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|arm64'" Label="Configuration">
+        <ConfigurationType></ConfigurationType>
+        <CharacterSet>NotSet</CharacterSet>
+        <PlatformToolset>v141</PlatformToolset>
+      </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|arm64'" Label="Configuration">
         <ConfigurationType></ConfigurationType>
         <CharacterSet>NotSet</CharacterSet>
         <PlatformToolset>v141</PlatformToolset>
@@ -71,6 +89,16 @@
         <Import Project="release.props" />
         <Import Project="x64.props" />
       </ImportGroup>
+      <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|arm64'" Label="PropertySheets">
+        <Import Project="product.props" />
+        <Import Project="debug.props" />
+        <Import Project="arm64.props" />
+      </ImportGroup>
+      <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|arm64'" Label="PropertySheets">
+        <Import Project="product.props" />
+        <Import Project="release.props" />
+        <Import Project="arm64.props" />
+      </ImportGroup>      
 
       <PropertyGroup>
         <_ProjectFileVersion>10</_ProjectFileVersion>
@@ -90,6 +118,14 @@
         <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(BinDir)\</OutDir>
         <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(ObjDir)\prep\</IntDir>
         <CustomBuildBeforeTargets Condition="'$(Configuration)|$(Platform)'=='Release|x64'">PreBuildEvent</CustomBuildBeforeTargets>
+
+        <OutDir Condition="'$(Configuration)|$(Platform)'=='Debug|arm64'">$(BinDir)\</OutDir>
+        <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug|arm64'">$(ObjDir)\prep\</IntDir>
+        <CustomBuildBeforeTargets Condition="'$(Configuration)|$(Platform)'=='Debug|arm64'">PreBuildEvent</CustomBuildBeforeTargets>
+
+        <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|arm64'">$(BinDir)\</OutDir>
+        <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|arm64'">$(ObjDir)\prep\</IntDir>
+        <CustomBuildBeforeTargets Condition="'$(Configuration)|$(Platform)'=='Release|arm64'">PreBuildEvent</CustomBuildBeforeTargets>
   </PropertyGroup>
 
       <ItemDefinitionGroup>
@@ -101,12 +137,11 @@ if not exist "$(ObjDir)" md "$(ObjDir)"
 if not exist "$(BinDir)" md "$(BinDir)"
 if not exist "$(IncDir)" md "$(IncDir)"
 if not exist "$(IncDir)\me.h" copy "..\ioto-windows-default-me.h" "$(IncDir)\me.h"
+copy /Y /B ..\..\include\config.h $(IncDir)
 copy /Y /B ..\..\include\crypt.h $(IncDir)
 copy /Y /B ..\..\include\db.h $(IncDir)
-copy /Y /B ..\..\include\ioto-config.h $(IncDir)
 copy /Y /B ..\..\include\ioto.h $(IncDir)
 copy /Y /B ..\..\include\json.h $(IncDir)
-copy /Y /B ..\..\include\me.h $(IncDir)
 copy /Y /B ..\..\include\mqtt.h $(IncDir)
 copy /Y /B ..\..\include\openai.h $(IncDir)
 copy /Y /B ..\..\include\osdep.h $(IncDir)
@@ -116,7 +151,7 @@ copy /Y /B ..\..\include\uctx-os.h $(IncDir)
 copy /Y /B ..\..\include\uctx.h $(IncDir)
 copy /Y /B ..\..\include\url.h $(IncDir)
 copy /Y /B ..\..\include\web.h $(IncDir)
-copy /Y /B ..\..\include\websockets.h $(IncDir)
+copy /Y /B ..\..\include\websock.h $(IncDir)
 cd .</Command>
         <Outputs>always</Outputs>
       </CustomBuildStep>
@@ -125,5 +160,6 @@ cd .</Command>
   <Import Project="$(VCTargetsPath)Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
+
 
 </Project>

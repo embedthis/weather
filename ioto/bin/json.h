@@ -1,16 +1,17 @@
 
 /********* Start of file ../../../src/osdep/osdep.h ************/
 
-/**
-    Operating system dependent abstraction layer.
-    @description This header provides a comprehensive cross-platform abstraction layer for embedded IoT applications.
+/*
+    osdep.h - Operating system dependent abstraction layer.
+
+    This header provides a comprehensive cross-platform abstraction layer for embedded IoT applications.
     It defines standard types, platform detection constants, compiler abstractions, and operating system compatibility
     macros to enable portability across diverse embedded and desktop systems. This is the foundational module consumed
     by all other EmbedThis modules and must be included first in any source file. The module automatically detects
     the target platform's CPU architecture, operating system, compiler, and endianness to provide consistent behavior
     across ARM, x86, MIPS, PowerPC, SPARC, RISC-V, Xtensa, and other architectures running on Linux, macOS, Windows,
     VxWorks, FreeRTOS, ESP32, and other operating systems.
-    @stability Evolving
+
     Copyright (c) All Rights Reserved. See details at the end of the file.
  */
 
@@ -200,17 +201,17 @@
     #define ME_CPU_ARCH ME_CPU_ALPHA
     #define CPU_ENDIAN ME_LITTLE_ENDIAN
 
-#elif defined(__arm64__) || defined(__aarch64__)
+#elif defined(__arm64__) || defined(__aarch64__) || defined(_M_ARM64)
     #define ME_CPU "arm64"
     #define ME_CPU_ARCH ME_CPU_ARM64
     #define CPU_ENDIAN ME_LITTLE_ENDIAN
 
-#elif defined(__arm__)
+#elif defined(__arm__) || defined(_M_ARM)
     #define ME_CPU "arm"
     #define ME_CPU_ARCH ME_CPU_ARM
     #define CPU_ENDIAN ME_LITTLE_ENDIAN
 
-#elif defined(__x86_64__) || defined(_M_AMD64)
+#elif defined(__x86_64__) || defined(_M_AMD64) || defined(__amd64__) || defined(__amd64)
     #define ME_CPU "x64"
     #define ME_CPU_ARCH ME_CPU_X64
     #define CPU_ENDIAN ME_LITTLE_ENDIAN
@@ -235,14 +236,15 @@
     #define ME_CPU_ARCH ME_CPU_MIPS64
     #define CPU_ENDIAN ME_BIG_ENDIAN
 
-#elif defined(__ppc__) || defined(__powerpc__) || defined(__ppc)
+#elif defined(__ppc64__) || defined(__powerpc64__)
+    #define ME_CPU "ppc64"
+    #define ME_CPU_ARCH ME_CPU_PPC64
+    #define CPU_ENDIAN ME_BIG_ENDIAN
+
+#elif defined(__ppc__) || defined(__powerpc__) || defined(__ppc) || defined(__POWERPC__)
     #define ME_CPU "ppc"
     #define ME_CPU_ARCH ME_CPU_PPC
     #define CPU_ENDIAN ME_BIG_ENDIAN
-
-#elif defined(__ppc64__)
-    #define CPU "ppc64"
-    #define CPU_ARCH CPU_PPC64
 
 #elif defined(__sparc__)
     #define ME_CPU "sparc"
@@ -260,20 +262,20 @@
     #define ME_CPU_ARCH ME_CPU_SH
     #define CPU_ENDIAN ME_LITTLE_ENDIAN
 
-#elif defined(__riscv_32)
-    #define ME_CPU "riscv"
-    #define ME_CPU_ARCH ME_CPU_RISCV
-    #define ME_CPU_ENDIAN ME_LITTLE_ENDIAN
-
-#elif defined(__riscv_64)
+#elif defined(__riscv) && (__riscv_xlen == 64)
     #define ME_CPU "riscv64"
     #define ME_CPU_ARCH ME_CPU_RISCV64
-    #define ME_CPU_ENDIAN ME_LITTLE_ENDIAN
+    #define CPU_ENDIAN ME_LITTLE_ENDIAN
 
-#elif defined(__XTENSA__)
+#elif defined(__riscv) && (__riscv_xlen == 32)
+    #define ME_CPU "riscv"
+    #define ME_CPU_ARCH ME_CPU_RISCV
+    #define CPU_ENDIAN ME_LITTLE_ENDIAN
+
+#elif defined(__XTENSA__) || defined(__xtensa__)
     #define ME_CPU "xtensa"
     #define ME_CPU_ARCH ME_CPU_XTENSA
-    #define ME_CPU_ENDIAN ME_LITTLE_ENDIAN
+    #define CPU_ENDIAN ME_LITTLE_ENDIAN
 #else
     #error "Cannot determine CPU type in osdep.h"
 #endif
@@ -416,6 +418,7 @@
     #define ME_UNIX_LIKE 0
     #define ME_WIN_LIKE 0
     #define HAS_USHORT 1
+    #define PTHREADS 1
 
 #elif defined(ECOS)
     /* ECOS may not have a pre-defined symbol */
@@ -651,6 +654,7 @@
     #include    <netinet/ip.h>
 #endif
 #if ME_UNIX_LIKE
+    #include    <stdbool.h>
     #include    <pthread.h>
     #include    <pwd.h>
 #if !CYGWIN
@@ -665,9 +669,8 @@
     #include    <setjmp.h>
     #include    <signal.h>
     #include    <stdarg.h>
-#if ME_UNIX_LIKE
+    #include    <stddef.h>
     #include    <stdint.h>
-#endif
     #include    <stdio.h>
     #include    <stdlib.h>
     #include    <string.h>
@@ -708,6 +711,7 @@
     #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
         #include    <sys/epoll.h>
     #endif
+    #include    <malloc.h>
     #include    <sys/prctl.h>
     #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,22)
         #include    <sys/eventfd.h>
@@ -722,6 +726,17 @@
         #include    <sys/sendfile.h>
     #endif
 #endif
+
+/*
+    Sendfile support for zero-copy file transfers
+ */
+#if LINUX && !__UCLIBC__
+    #define ME_HAS_SENDFILE 1
+#elif MACOSX || FREEBSD
+    #define ME_HAS_SENDFILE 1
+#else
+    #define ME_HAS_SENDFILE 0
+#endif
 #if MACOSX
     #include    <stdbool.h>
     #include    <mach-o/dyld.h>
@@ -729,6 +744,7 @@
     #include    <mach/mach_init.h>
     #include    <mach/mach_time.h>
     #include    <mach/task.h>
+    #include    <malloc/malloc.h>
     #include    <libkern/OSAtomic.h>
     #include    <net/if_dl.h>
 #endif
@@ -773,7 +789,6 @@
 #endif
 
 #if FREERTOS
-    #include <stddef.h>
     #include <string.h>
     #include "time.h"
 #if ESP32
@@ -824,7 +839,7 @@
 */
 #ifndef HAS_BOOL
     #ifndef __cplusplus
-        #if !MACOSX && !FREERTOS
+        #if !ME_UNIX_LIKE && !FREERTOS
             #define HAS_BOOL 1
             /**
                 Boolean data type.
@@ -996,17 +1011,16 @@
 
 #ifndef HAS_SSIZE
     #define HAS_SSIZE 1
-    #if ME_UNIX_LIKE || VXWORKS || DOXYGEN
+    #if ME_WIN_LIKE
+        typedef SSIZE_T ssize;
+        typedef SSIZE_T ssize_t;
+    #else
         /**
             Signed size type for memory and I/O operations.
             @description Platform-appropriate signed integer type large enough to hold array indices, memory sizes,
             and I/O transfer counts. Can represent negative values for error conditions. Equivalent to size_t but signed.
             @stability Stable
          */
-        typedef ssize_t ssize;
-    #elif ME_WIN_LIKE
-        typedef SSIZE_T ssize;
-    #else
         typedef ssize_t ssize;
     #endif
 #endif
@@ -1159,8 +1173,14 @@ typedef int64 Ticks;
         #undef isnan
         #define isnan(n)  ((n) != (n))
         #define isnanf(n) ((n) != (n))
-        #define isinf(n)  ((n) == (1.0 / 0.0) || (n) == (-1.0 / 0.0))
-        #define isinff(n) ((n) == (1.0 / 0.0) || (n) == (-1.0 / 0.0))
+        #if defined(__GNUC__)
+            #define isinf(n)  __builtin_isinf(n)
+            #define isinff(n) __builtin_isinff(n)
+        #else
+            #include <math.h>
+            #define isinf(n)  ((n) == HUGE_VAL || (n) == -HUGE_VAL)
+            #define isinff(n) ((n) == HUGE_VALF || (n) == -HUGE_VALF)
+        #endif
     #endif
     #if ME_WIN_LIKE
         #define isNan(f) (_isnan(f))
@@ -1202,20 +1222,16 @@ typedef int64 Ticks;
     #define MAXUINT64   INT64(0xffffffffffffffff)
 #endif
 
-#if SIZE_T_MAX
-    #define MAXSIZE     SIZE_T_MAX
-#elif ME_64
-    #define MAXSIZE     INT64(0xffffffffffffffff)
-#else
-    #define MAXSIZE     MAXINT
-#endif
-
-#if SSIZE_T_MAX
-    #define MAXSSIZE     SSIZE_T_MAX
+#if SSIZE_MAX
+    #define MAXSSIZE     ((ssize) SSIZE_MAX)
 #elif ME_64
     #define MAXSSIZE     INT64(0x7fffffffffffffff)
 #else
     #define MAXSSIZE     MAXINT
+#endif
+
+#ifndef SSIZE_MAX
+    #define SSIZE_MAX    MAXSSIZE
 #endif
 
 #if OFF_T_MAX
@@ -1376,9 +1392,9 @@ typedef int64 Ticks;
     #define LD_LIBRARY_PATH "LD_LIBRARY_PATH"
 #endif
 
-#if VXWORKS
+#if VXWORKS || WINDOWS
     /*
-        Old VxWorks cannot do array[]
+        Use in arra[ARRAY_FLEX] to avoid compiler warnings
      */
     #define ARRAY_FLEX 0
 #else
@@ -1658,6 +1674,7 @@ typedef int64 Ticks;
     #define MSG_NOSIGNAL    0
     #define FILE_BINARY     "b"
     #define FILE_TEXT       "t"
+    #define O_CLOEXEC       0
 
     /*
         Error codes
@@ -1725,6 +1742,7 @@ typedef int64 Ticks;
     #endif
 
     #if !WINCE
+    #ifndef access
     #define access      _access
     #define chdir       _chdir
     #define chmod       _chmod
@@ -1749,8 +1767,33 @@ typedef int64 Ticks;
     #define write       _write
     PUBLIC void         sleep(int secs);
     #endif
+    #endif
+
+    #ifndef strcasecmp
     #define strcasecmp scaselesscmp
     #define strncasecmp sncaselesscmp
+    #endif
+    #ifndef strncasecmp
+        #define strncasecmp sncaselesscmp
+    #endif
+
+    /*
+        Define S_ISREG and S_ISDIR macros for Windows if not already defined
+     */
+    #ifndef S_ISDIR
+        #define S_ISDIR(m) (((m) & _S_IFMT) == _S_IFDIR)
+    #endif
+    #ifndef S_ISREG
+        #define S_ISREG(m) (((m) & _S_IFMT) == _S_IFREG)
+    #endif
+
+    /*
+        Define strtok_r for Windows if not already defined
+    */
+    #ifndef strtok_r
+        #define strtok_r strtok_s
+    #endif
+
     #pragma comment( lib, "ws2_32.lib" )
 #endif /* WIN_LIKE */
 
@@ -1789,6 +1832,13 @@ typedef int64 Ticks;
     #endif
     #ifndef S_ISREG
         #define S_ISREG(X) (((X) & S_IFMT) == S_IFREG)
+    #endif
+
+    /*
+        Windows uses strtok_s instead of strtok_r
+     */
+    #ifndef strtok_r
+        #define strtok_r strtok_s
     #endif
 
     #define STARTF_USESHOWWINDOW 0
@@ -1991,14 +2041,14 @@ extern "C" {
 
 /********* Start of file ../../../src/r/r.h ************/
 
-/**
-    @file r.h
-    @brief Safe Runtime (R) - Foundational C Runtime for Embedded IoT Applications
-    @description The Safe Runtime (R) is a secure, high-performance C runtime library designed specifically for
-                 embedded IoT applications. It provides a complete replacement for standard C library functions
-                 with enhanced security, memory safety, and fiber-based concurrency.
+/*
+    Safe Runtime (R) - Foundational C Runtime for Embedded IoT Applications
 
-    ## Key Features
+    The Safe Runtime (R) is a secure, high-performance C runtime library designed specifically for
+    embedded IoT applications. It provides a complete replacement for standard C library functions
+    with enhanced security, memory safety, and fiber-based concurrency.
+
+ ## Key Features
     - Fiber-based coroutine concurrency instead of traditional threading
     - Centralized memory management with automatic failure detection
     - Safe string operations that prevent buffer overflows
@@ -2006,7 +2056,7 @@ extern "C" {
     - Null-tolerant APIs for robust error handling
     - Event-driven I/O with non-blocking operations
 
-    ## Architecture
+ ## Architecture
     The Safe Runtime consists of several core components:
     - **Memory Management**: Centralized allocator with failure detection (`rAlloc`, `rFree`)
     - **String Operations**: Safe replacements for C string functions (`slen`, `scopy`, `scmp`)
@@ -2015,18 +2065,18 @@ extern "C" {
     - **Event System**: I/O multiplexing and event-driven programming
     - **Platform Abstraction**: Cross-platform OS dependencies via osdep layer
 
-    ## Thread Safety
+ ## Thread Safety
     All functions in this API are designed for fiber-based concurrency. Unless explicitly documented otherwise,
     functions are fiber-safe but may not be thread-safe when called from different OS threads simultaneously.
     The runtime uses a single-threaded model with fiber coroutines for concurrency.
 
-    ## Memory Management Philosophy
+ ## Memory Management Philosophy
     - Use `rAlloc()` family instead of `malloc()`/`free()`
     - No need to check for NULL returns - centralized handler manages failures
     - Most functions are null-tolerant (e.g., `rFree(NULL)` is safe)
     - Memory ownership is clearly documented for each function
 
-    ## Error Handling
+ ## Error Handling
     Functions follow consistent error reporting patterns:
     - Return values indicate success/failure where applicable
     - Null tolerance prevents crashes from invalid inputs
@@ -2116,8 +2166,17 @@ extern "C" {
     #define R_USE_PLATFORM_REPORT ESP32
 #endif
 
+#ifndef ME_FIBER_VM_STACK
+    #if ESP32 || FREERTOS
+        #define ME_FIBER_VM_STACK 0
+    #else
+        #define ME_FIBER_VM_STACK 1
+    #endif
+#endif
+
 #ifndef ME_FIBER_GUARD_STACK
-    #if ME_DEBUG
+//  Only use fiber guards when not using VM stack (VM provides guard pages)
+    #if ME_DEBUG && !ME_FIBER_VM_STACK
         #define ME_FIBER_GUARD_STACK 1
     #else
         #define ME_FIBER_GUARD_STACK 0
@@ -2166,11 +2225,7 @@ struct Rtls;
 #endif
 
 #ifndef ME_R_PRINT
-    #define ME_R_PRINT           1
-#endif
-
-#ifndef ME_FIBER_GUARD_STACK
-    #define ME_FIBER_GUARD_STACK 0
+    #define ME_R_PRINT 1
 #endif
 
 /************************************ Error Codes *****************************/
@@ -2295,7 +2350,6 @@ PUBLIC_DATA int rState;
     Gracefully stop the app
     @description Queued events will be serviced before stopping. This function initiates
                  a graceful shutdown of the runtime, allowing pending operations to complete.
-                 This function is fiber-safe.
     @stability Evolving
     @see rStop
  */
@@ -2314,7 +2368,7 @@ PUBLIC void rStop(void);
 /**
     Get the current R state
     @description Retrieves the current state of the Safe Runtime system. This function
-                 is fiber-safe and can be called from any fiber context.
+                 can be called from any fiber context.
     @return Returns R_INITIALIZED, R_READY, R_STOPPING or R_STOPPED.
     @stability Evolving
  */
@@ -2363,7 +2417,7 @@ PUBLIC void rassert(bool cond);
 #endif
 #define rassert(C)              if (C); else rAssert(R_LOC, #C)
 
-#define R_ALLOC_ALIGN(x, bytes) (((x) + bytes - 1) & ~(bytes - 1))
+#define R_ALLOC_ALIGN(x, bytes) (((x) + (size_t) bytes - 1) & ~((size_t) bytes - 1))
 
 #define R_MEM_WARNING 0x1                     /**< Memory use exceeds warnHeap level limit */
 #define R_MEM_LIMIT   0x2                     /**< Memory use exceeds memory limit - invoking policy */
@@ -2397,7 +2451,7 @@ PUBLIC void *rAllocType(RType type);
 /**
     Allocate a block of memory.
     @description This is the primary memory allocation routine. Memory is freed via rFree. This function
-                 is fiber-safe and uses the centralized Safe Runtime allocator.
+                 is THREAD SAFE and uses the centralized Safe Runtime allocator.
     @param size Size of the memory block to allocate in bytes. Must be > 0.
     @return Returns a pointer to the allocated block. If memory is not available the memory exhaustion
             handler will be invoked (typically causing program termination). Never returns NULL.
@@ -2409,7 +2463,7 @@ PUBLIC void *rAlloc(size_t size);
 /**
     Free a block of memory allocated via rAlloc.
     @description This releases a block of memory allocated via rAllocMem. This function is null-tolerant
-                 and safe to call with NULL pointers. This function is fiber-safe.
+                 and safe to call with NULL pointers. This function is THREAD SAFE.
     @param ptr Pointer to the block. If ptr is NULL, the call is safely skipped.
     @remarks The rFree routine is a macro over rFreeMem. Do not mix calls to rFreeMem and free.
     @stability Evolving
@@ -2471,6 +2525,27 @@ PUBLIC void *rReallocMem(void *ptr, size_t size);
 PUBLIC void rFreeMem(void *ptr);
 
 /**
+    Allocate virtual memory
+    @description Allocate memory using virtual memory allocation (mmap/VirtualAlloc).
+        This keeps allocations separate from the heap to reduce fragmentation.
+        Useful for allocating large blocks like fiber stacks.
+        Only supported on Unix/Windows.
+    @param size Size of memory block to allocate in bytes.
+    @return Pointer to allocated memory block, or NULL on failure.
+    @stability Evolving
+ */
+PUBLIC void *rAllocVirt(size_t size);
+
+/**
+    Free virtual memory
+    @description Free memory allocated via rAllocVirt.  Only supported on Unix/Windows.
+    @param ptr Memory block pointer to free. NULL is safely ignored.
+    @param size Size of the memory block (required for munmap on Unix).
+    @stability Evolving
+ */
+PUBLIC void rFreeVirt(void *ptr, size_t size);
+
+/**
     Compare two blocks of memory
     @description Compare two blocks of memory.
     @param s1 First block of memory
@@ -2516,6 +2591,7 @@ PUBLIC void *rMemdup(cvoid *ptr, size_t size);
 PUBLIC void rSetMemHandler(RMemProc handler);
 
 /************************************ Fiber ************************************/
+
 /**
     Fiber entry point function
     @param data Custom function argument
@@ -2525,18 +2601,81 @@ typedef void (*RFiberProc)(void *data);
 
 #if R_USE_FIBER
 
+#ifndef ME_FIBER_DEFAULT_STACK
+/*
+    Standard printf alone can use 8k
+ */
+    #if ME_64
+        #define ME_FIBER_DEFAULT_STACK ((size_t) (64 * 1024))
+    #else
+        #define ME_FIBER_DEFAULT_STACK ((size_t) (32 * 1024))
+    #endif
+#endif
+
+/*
+    Empirically tested minimum safe stack. Routines like getaddrinfo are stack intenstive.
+ */
+#ifndef ME_FIBER_MIN_STACK
+    #define ME_FIBER_MIN_STACK   ((size_t) (16 * 1024))
+#endif
+/*
+    Guard character for stack overflow detection when not using VM stacks
+ */
+#define R_STACK_GUARD_CHAR       0xFE
+
+#ifndef ME_FIBER_ALLOC_DEBUG
+    #define ME_FIBER_ALLOC_DEBUG 0
+#endif
+
+#ifndef ME_FIBER_POOL_MIN
+    #if ESP32 || FREERTOS
+        #define ME_FIBER_POOL_MIN 0
+    #else
+        #define ME_FIBER_POOL_MIN 1
+    #endif
+#endif
+
+#ifndef ME_FIBER_POOL_LIMIT
+    #if ESP32 || FREERTOS
+        #define ME_FIBER_POOL_LIMIT 4
+    #else
+        #define ME_FIBER_POOL_LIMIT 8
+    #endif
+#endif
+
+#ifndef ME_FIBER_PRUNE_INTERVAL
+    #define ME_FIBER_PRUNE_INTERVAL (1 * 60 * 1000)
+#endif
+
+#ifndef ME_FIBER_IDLE_TIMEOUT
+    #define ME_FIBER_IDLE_TIMEOUT   (60 * 1000)
+#endif
+
 #if FIBER_WITH_VALGRIND
-  #include <valgrind/valgrind.h>
-  #include <valgrind/memcheck.h>
+    #include <valgrind/valgrind.h>
+    #include <valgrind/memcheck.h>
 #endif
 
 /**
     Fiber state
     @stability Evolving
  */
+#if _MSC_VER
+// Suppress C4324: jmp_buf has 16-byte alignment for SSE registers, causing struct padding
+    #pragma warning(push)
+    #pragma warning(disable: 4324)
+#endif
 typedef struct RFiber {
+    struct RFiber *next; // Free list link when pooled
     uctx_t context;
+    RFiberProc func;     // Next function to run (for pooled reuse)
+    Ticks idleSince;     // Timestamp when fiber was returned to pool (for idle pruning)
+    jmp_buf jmpbuf;
     void *result;
+    void *data;          // Next data (for pooled reuse)
+    bool block;          // Fiber executing a setjmp block
+    bool pooled;         // Fiber is pooled, waiting for reuse
+    int exception;       // Exception that caused the fiber to crash
     int done;
 #if FIBER_WITH_VALGRIND
     uint stackId;
@@ -2545,8 +2684,22 @@ typedef struct RFiber {
     //  SECURITY: Acceptable - small guard is enough for embedded systems
     char guard[128];
 #endif
+#if ME_FIBER_VM_STACK
+    uchar *stack;        // Pointer to VM-allocated stack
+#else
+#if _MSC_VER
+    #pragma warning(push)
+    #pragma warning(disable: 4200)
+#endif
     uchar stack[];
+#if _MSC_VER
+    #pragma warning(pop)
+#endif
+#endif
 } RFiber;
+#if _MSC_VER
+    #pragma warning(pop)
+#endif
 
 /**
     Thread entry point function
@@ -2571,13 +2724,12 @@ PUBLIC void rTermFibers(void);
 
 /**
     Spawn a fiber coroutine
-    @description This allocates a new fiber and resumes it. The resumed fiber is started via an event to the main fiber
-       to the current fiber will not block and will return from this call before the function
-    is called.
+    @description This allocates a new fiber and resumes it. The resumed fiber is started via an event to the main fiber,
+       so the current fiber will not block and will return from this call before the spawned function is called.
     @param name Fiber name.
     @param fn Fiber entry point.
     @param arg Entry point argument.
-    @return Zero if successful.
+    @return Zero if successful, otherwise a negative RT error code.
     @stability Evolving
  */
 PUBLIC int rSpawnFiber(cchar *name, RFiberProc fn, void *arg);
@@ -2585,7 +2737,8 @@ PUBLIC int rSpawnFiber(cchar *name, RFiberProc fn, void *arg);
 /**
     Spawn an O/S thread and wait until it completes.
     @description This creates a new thread and runs the given function. It then yields until the
-        thread function returns and returns the function result.
+        thread function returns and returns the function result. NOTE: the spawned thread must not call
+        any Safe Runtime APIs that are not explicitly maked as THREAD SAFE.
     @param fn Thread main function entry point.
     @param arg Argument provided to the thread.
     @return Value returned from spawned thread function.
@@ -2609,12 +2762,39 @@ PUBLIC void *rResumeFiber(RFiber *fiber, void *result);
 
 /**
     Yield a fiber back to the main fiber
-    @description Pause a fiber until resumed by the main fiber.
-        the target fiber is resumed via an event to the main fiber.
+    @description Pause the current fiber and yield control back to the main fiber. The fiber will remain
+        paused until another fiber or the main fiber calls rResumeFiber on this fiber. The value parameter
+        will be returned to the caller of rResumeFiber.
     @param value Value to provide as a result to the fiber that called rResumeFiber.
+    @return Value passed by the fiber that calls rResumeFiber to resume this fiber.
     @stability Evolving
  */
 PUBLIC void *rYieldFiber(void *value);
+
+/**
+    Start a fiber block
+    @description This starts a fiber block using setjmp/longjmp. Use rEndFiberBlock to jump out of the block.
+    @return Zero on first call. Returns 1 when jumping out of the block.
+    @stability Prototype
+ */
+PUBLIC int rStartFiberBlock(void);
+
+/**
+    End a fiber block
+    @description This jumps out of a fiber block using longjmp. This is typically called when an exception occurs
+    in the fiber block.
+    @stability Prototype
+ */
+PUBLIC void rEndFiberBlock(void);
+
+/**
+    Abort the current fiber immediately. Does not return.
+    @description Immediately terminates the current fiber and yields back to the main fiber.
+    The fiber is freed and not returned to the pool. Call after handling an exception
+    from rStartFiberBlock if the fiber context may be corrupted.
+    @stability Evolving
+ */
+PUBLIC void rAbortFiber(void);
 
 /**
     Get the current fiber object
@@ -2624,8 +2804,8 @@ PUBLIC void *rYieldFiber(void *value);
 PUBLIC RFiber *rGetFiber(void);
 
 /**
-    Test if a fiber is the main fiber
-    @return True if the fiber is the main fiber
+    Test if executing on the main fiber. Not thread-safe - only call from the runtime thread.
+    @return True if executing on the main fiber
     @stability Evolving
  */
 PUBLIC bool rIsMain(void);
@@ -2662,22 +2842,47 @@ PUBLIC int64 rGetStackUsage(void);
  */
 PUBLIC void *rGetFiberStack(void);
 
-//  ESP32 DOC
-PUBLIC ssize rGetFiberStackSize(void);
+/**
+    Get the current fiber stack size
+    @description Returns the configured fiber stack size in bytes.
+    @return The fiber stack size in bytes.
+    @stability Evolving
+ */
+PUBLIC size_t rGetFiberStackSize(void);
 
 /**
     Set the default fiber stack size
     @param size Size of fiber stack in bytes. This should typically be in the range of 64K to 512K.
     @stability Evolving
  */
-PUBLIC void rSetFiberStack(ssize size);
+PUBLIC void rSetFiberStackSize(size_t size);
 
 /**
-    Set the fiber limits
-    @param maxFibers The maximum number of fibers (stacks). Set to zero for no limit.
+    Set fiber limits
+    @description Configure fiber allocation limits and pool size for caching and reusing fiber allocations.
+        The pool reduces allocation overhead by maintaining a cache of pre-allocated fibers.
+    @param maxFibers Maximum number of fibers (stacks). Set to zero for no limit.
+    @param poolMin Minimum number of fibers to keep in the pool (prune target).
+    @param poolMax Maximum number of fibers to pool.
+    @return The previous maxFibers limit.
     @stability Evolving
  */
-PUBLIC void rSetFiberLimits(int maxFibers);
+PUBLIC int rSetFiberLimits(int maxFibers, int poolMin, int poolMax);
+
+/**
+    Get fiber statistics
+    @description Retrieve current fiber metrics for monitoring and tuning.
+    @param active Output pointer for current active fiber count (may be NULL).
+    @param max Output pointer for maximum fiber limit (may be NULL).
+    @param pooled Output pointer for current number of pooled fibers (may be NULL).
+    @param poolMax Output pointer for maximum pool size (may be NULL).
+    @param poolMin Output pointer for minimum pool size (may be NULL).
+    @param hits Output pointer for pool hit count (may be NULL).
+    @param misses Output pointer for pool miss count (may be NULL).
+    @stability Evolving
+ */
+PUBLIC void rGetFiberStats(int *active, int *max, int *pooled, int *poolMax, int *poolMin, uint64 *hits,
+                           uint64 *misses);
 
 /**
     Allocate a fiber coroutine object
@@ -2749,7 +2954,7 @@ PUBLIC void rLeave(bool *access);
     @return Returns the CPU time in ticks. Will return the system time if CPU ticks are not available.
     @stability Internal
  */
-uint64 rGetHiResTicks(void);
+PUBLIC uint64 rGetHiResTicks(void);
 
 /**
     Convert a time value to local time and format as a string.
@@ -2891,13 +3096,30 @@ PUBLIC char *rFormatUniversalTime(cchar *format, Time time);
 PUBLIC char *rGetDate(cchar *format);
 
 /**
+    Get the elapsed time since a ticks mark. Create the ticks mark with rGetTicks()
+    @param mark Staring time stamp
+    @returns the time elapsed since the mark was taken.
+    @stability Evolving
+ */
+PUBLIC Ticks rGetElapsedTicks(Ticks mark);
+
+/**
     Get an ISO Date string representation of the given date/time
-    @description Get the date/time as an ISO string.
+    @description Get the date/time as an ISO string. This is a RFC 3339 date string: "2025-11-10T21:28:28.000Z"
     @param time Given time to convert.
     @return A date string. Caller must free.
     @stability Evolving
  */
 PUBLIC char *rGetIsoDate(Time time);
+
+/**
+    Get an HTTP Date string representation of the given date/time
+    @description Get the date/time as an HTTP string. This is a RFC 7231 IMF-fixdate: "Mon, 10 Nov 2025 21:28:28 GMT"
+    @param time Given time to convert.
+    @return A date string. Caller must free.
+    @stability Evolving
+ */
+PUBLIC char *rGetHttpDate(Time time);
 
 /**
     Get the elapsed time since a ticks mark. Create the ticks mark with rGetTicks()
@@ -2934,11 +3156,34 @@ PUBLIC Ticks rGetTicks(void);
 PUBLIC Time rGetTime(void);
 
 /**
+    Make a time from a struct tm
+    @param tp Pointer to a struct tm
+    @return The time in milliseconds since Jan 1 1970.
+    @stability Evolving
+ */
+PUBLIC Time rMakeTime(struct tm *tp);
+/**
+    Make a universal time from a struct tm
+    @param tp Pointer to a struct tm
+    @return The time in milliseconds since Jan 1 1970.
+    @stability Evolving
+ */
+PUBLIC Time rMakeUniversalTime(struct tm *tp);
+
+/**
     Parse an ISO date string
-    @return The time in milliseconds since Jan 1, 1970.
+    @return The time in milliseconds since Jan 1, 1970. If the string is invalid, return -1.
     @stability Evolving
  */
 PUBLIC Time rParseIsoDate(cchar *when);
+
+/**
+    Parse an HTTP date string
+    @param value HTTP date string
+    @return The time in milliseconds since Jan 1, 1970. If the string is invalid, return 0.
+    @stability Evolving
+ */
+PUBLIC Time rParseHttpDate(cchar *value);
 
 #endif /* R_USE_TIME */
 
@@ -2960,12 +3205,13 @@ typedef int64 REvent;
 #define R_EVENT_EPOLL             2       /**< epoll_wait */
 #define R_EVENT_KQUEUE            3       /**< BSD kqueue */
 #define R_EVENT_SELECT            4       /**< traditional select() */
+#define R_EVENT_WSAPOLL           5       /**< Windows WSAPOLL */
 
 #ifndef ME_EVENT_NOTIFIER
     #if MACOSX || SOLARIS
         #define ME_EVENT_NOTIFIER R_EVENT_KQUEUE
     #elif WINDOWS
-        #define ME_EVENT_NOTIFIER R_EVENT_ASYNC
+        #define ME_EVENT_NOTIFIER R_EVENT_WSAPOLL
     #elif VXWORKS || ESP32
         #define ME_EVENT_NOTIFIER R_EVENT_SELECT
     #elif (LINUX || ME_BSD_LIKE) && (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 0))
@@ -2980,6 +3226,7 @@ typedef int64 REvent;
 #define R_MODIFIED                0x200 /**< Wait mask for modify events */
 #define R_IO                      0x6   /**< Wait mask for readable or writeable events */
 #define R_TIMEOUT                 0x400 /**< Wait mask for timeout */
+#define R_WAIT_MAIN_FIBER         0x1   /**< Execute wait handler on main fiber without allocating a new fiber */
 
 #define R_EVENT_FAST              0x1   /**< Fast event flag - must not block and runs off main fiber */
 
@@ -3142,7 +3389,9 @@ typedef struct RWait {
     cvoid *arg;             /**< Argument to pass to the handler */
     Ticks deadline;         /**< System deadline time to wait until */
     int mask;               /**< Current event mask */
-    int fd;                 /**< File descriptor to wait upon */
+    int eventMask;          /**< I/O events received */
+    int flags;              /**< Wait handler flags (R_WAIT_MAIN_FIBER) */
+    Socket fd;              /**< File descriptor to wait upon */
 } RWait;
 
 /**
@@ -3168,6 +3417,7 @@ PUBLIC RWait *rAllocWait(int fd);
 
 /**
     Free a wait object
+    @description This call will free a wait object. The underlying socket is assumed to be already closed.
     @param wp RWait object
     @stability Evolving
  */
@@ -3180,25 +3430,31 @@ PUBLIC void rFreeWait(RWait *wp);
     @param mask Event mask to pass to fiber on resume
     @stability Evolving
  */
-PUBLIC void rResumeWait(RWait *wp, int mask);
+PUBLIC void rResumeWaitFiber(RWait *wp, int mask);
 
 /**
     Define a wait handler function on a wait object.
     @description This will run the designated handler on a coroutine fiber in response to matching I/O events.
+        The wait mask is persistent - it remains active across multiple events. The handler will be invoked
+        each time the specified I/O events occur. To disable the wait, call rSetWaitMask(wp, 0, 0) or rFreeWait(wp).
     @param wp RWait object
     @param handler Function handler to invoke as the entrypoint in the new coroutine fiber.
     @param arg Parameter argument to pass to the handler
     @param mask Set to R_READABLE or R_WRITABLE or both.
     @param deadline Optional deadline to wait system time. Set to zero for no deadline.
+    @param flags Set to R_WAIT_MAIN_FIBER to run handler on main fiber without allocating a new fiber. Set to 0 for
+       default behavior.
     @stability Evolving
  */
-PUBLIC void rSetWaitHandler(RWait *wp, RWaitProc handler, cvoid *arg, int64 mask, Ticks deadline);
+PUBLIC void rSetWaitHandler(RWait *wp, RWaitProc handler, cvoid *arg, int64 mask, Ticks deadline, int flags);
 
 /**
-    Update the wait mask for a wait handler
+    Update the wait mask for a wait handler.
+    @description The wait mask is persistent and remains active across multiple events. If the mask and deadline
+        are unchanged from the current values, no kernel syscall is made.
     @param wp RWait object
-    @param mask Set to R_READABLE or R_WRITABLE or both.
-    @param deadline System time in ticks to wait until.  Set to zero for no deadline.
+    @param mask Set to R_READABLE or R_WRITABLE or both. Set to 0 to disable the wait.
+    @param deadline System time in ticks to wait until. Set to zero for no deadline.
     @stability Evolving
  */
 PUBLIC void rSetWaitMask(RWait *wp, int64 mask, Ticks deadline);
@@ -3245,6 +3501,13 @@ PUBLIC void rWakeup(void);
 /*
     This secure printf replacement uses very little stack and is tolerant of NULLs in arguments
     It also has a somewhat enhanced set of features, such as comma separated numbers and scientific notation.
+
+    IMPORTANT: This printf implementation is NOT designed to be 100% compatible with standard printf.
+    It provides a secure, embedded-friendly subset of printf functionality with the following differences:
+    - The %n format specifier is not supported (security)
+    - Floating point formatting may differ slightly from standard printf
+    - Some advanced format specifiers may not be supported
+    - Optimized for embedded systems with limited resources
  */
 
 /**
@@ -3261,7 +3524,7 @@ PUBLIC void rWakeup(void);
         stored if not limited by maxsize. Will be >= maxsize if the result is truncated.
     @stability Evolving
  */
-PUBLIC ssize rVsnprintf(char *buf, ssize maxsize, cchar *fmt, va_list args);
+PUBLIC ssize rVsnprintf(char *buf, size_t maxsize, cchar *fmt, va_list args);
 
 /**
     Format a string into a buffer.
@@ -3277,7 +3540,7 @@ PUBLIC ssize rVsnprintf(char *buf, ssize maxsize, cchar *fmt, va_list args);
     @return Returns the count of characters stored in buf or a negative error code for memory errors.
     @stability Evolving
  */
-PUBLIC ssize rVsaprintf(char **buf, ssize maxsize, cchar *fmt, va_list args);
+PUBLIC ssize rVsaprintf(char **buf, size_t maxsize, cchar *fmt, va_list args);
 
 /**
     Format a string into a buffer.
@@ -3292,7 +3555,7 @@ PUBLIC ssize rVsaprintf(char **buf, ssize maxsize, cchar *fmt, va_list args);
         limited by maxsize.
     @stability Evolving
  */
-PUBLIC ssize rSnprintf(char *buf, ssize maxsize, cchar *fmt, ...);
+PUBLIC ssize rSnprintf(char *buf, size_t maxsize, cchar *fmt, ...);
 
 /**
     Formatted print. This is a secure verion of printf that can handle null args.
@@ -3369,7 +3632,7 @@ PUBLIC char *sitosx(int64 value, int radix);
     @return Returns a reference to the string.
     @stability Evolving
  */
-PUBLIC char *sitosbuf(char *buf, ssize size, int64 value, int radix);
+PUBLIC char *sitosbuf(char *buf, size_t size, int64 value, int radix);
 
 /**
     Compare strings ignoring case. This is a r replacement for strcasecmp. It can handle NULL args.
@@ -3434,9 +3697,19 @@ PUBLIC char *sclone(cchar *str);
 PUBLIC char *scloneNull(cchar *str);
 
 /**
+    Clone a string and only clone if the string is defined and not empty.
+    @description Copy a string into a newly allocated block.
+    If passed a NULL or an empty string, this will return a NULL.
+    @param str Pointer to the block to duplicate.
+    @return Returns a newly allocated string or NULL. Caller must free.
+    @stability Evolving
+ */
+PUBLIC char *scloneDefined(cchar *str);
+
+/**
     Compare strings.
-    @description Safe replacement for strcmp. Compare two strings lexicographically. This function is null-tolerant
-                 and fiber-safe. NULL strings are treated as empty strings for comparison purposes.
+    @description Safe replacement for strcmp. Compare two strings lexicographically. This function is null-tolerant.
+       NULL strings are treated as empty strings for comparison purposes.
     @param s1 First string to compare. NULL is safely handled.
     @param s2 Second string to compare. NULL is safely handled.
     @return Returns zero if the strings are identical. Returns -1 if the first string is lexicographically
@@ -3459,14 +3732,14 @@ PUBLIC char *scontains(cchar *str, cchar *pattern);
     Copy a string.
     @description Safe replacement for strcpy. Copy a string and ensure the destination buffer is not overflowed.
                  This function enforces a maximum size for the copied string and ensures null-termination.
-                 This function is fiber-safe and null-tolerant.
+                 This funciton is null-tolerant.
     @param dest Destination buffer to receive the copied string. Must not be NULL.
     @param destMax Maximum size of the destination buffer in characters (including null terminator).
     @param src Source string to copy. NULL is safely handled (results in empty string).
     @return Returns the number of characters copied to the destination string, or -1 on error.
     @stability Evolving
  */
-PUBLIC ssize scopy(char *dest, ssize destMax, cchar *src);
+PUBLIC ssize scopy(char *dest, size_t destMax, cchar *src);
 
 /**
     Test if the string ends with a given pattern.
@@ -3507,7 +3780,7 @@ PUBLIC char *sfmt(cchar *fmt, ...) PRINTF_ATTRIBUTE(1, 2);
     @return Returns the buffer.
     @stability Evolving
  */
-PUBLIC char *sfmtbuf(char *buf, ssize maxSize, cchar *fmt, ...) PRINTF_ATTRIBUTE(3, 4);
+PUBLIC char *sfmtbuf(char *buf, size_t maxSize, cchar *fmt, ...) PRINTF_ATTRIBUTE(3, 4);
 
 /**
     Format a string into a statically allocated buffer.
@@ -3520,7 +3793,7 @@ PUBLIC char *sfmtbuf(char *buf, ssize maxSize, cchar *fmt, ...) PRINTF_ATTRIBUTE
     @return Returns the buffer;
     @stability Evolving
  */
-PUBLIC char *sfmtbufv(char *buf, ssize maxSize, cchar *fmt, va_list args);
+PUBLIC char *sfmtbufv(char *buf, size_t maxSize, cchar *fmt, va_list args);
 
 /**
     Format a string. This is a secure verion of printf that can handle null args.
@@ -3541,7 +3814,7 @@ PUBLIC char *sfmtv(cchar *fmt, va_list args);
     @return Returns an unsigned integer hash code
     @stability Evolving
  */
-PUBLIC uint shash(cchar *str, ssize len);
+PUBLIC uint shash(cchar *str, size_t len);
 
 /**
     Compute a hash code for a string after converting it to lower case.
@@ -3550,7 +3823,7 @@ PUBLIC uint shash(cchar *str, ssize len);
     @return Returns an unsigned integer hash code
     @stability Evolving
  */
-PUBLIC uint shashlower(cchar *str, ssize len);
+PUBLIC uint shashlower(cchar *str, size_t len);
 
 /**
     Catenate strings.
@@ -3598,12 +3871,12 @@ PUBLIC char *sjoinArgs(int argc, cchar **argv, cchar *sep);
 /**
     Return the length of a string.
     @description Safe replacement for strlen. This call returns the length of a string and is null-tolerant.
-                 This function is fiber-safe and does not modify the input string.
+                 This funciton does not modify the input string.
     @param str String to measure. NULL is safely handled and returns 0.
     @return Returns the length of the string in characters, or 0 if str is NULL.
     @stability Evolving
  */
-PUBLIC ssize slen(cchar *str);
+PUBLIC size_t slen(cchar *str);
 
 /**
     Convert a string to lower case.
@@ -3624,6 +3897,17 @@ PUBLIC char *slower(char *str);
 PUBLIC bool smatch(cchar *s1, cchar *s2);
 
 /**
+    Securely compare strings in constant time.
+    @description Compare two strings. This is similar to #scmp but it returns a boolean. This is a secure replacement
+       for strcmp.
+    @param s1 First string to compare.
+    @param s2 Second string to compare.
+    @return Returns true if the strings are equivalent, otherwise false.
+    @stability Evolving
+ */
+PUBLIC bool smatchsec(cchar *s1, cchar *s2);
+
+/**
     Compare strings ignoring case.
     @description Compare two strings ignoring case differences for a given string length. This call operates
         similarly to strncasecmp.
@@ -3634,7 +3918,7 @@ PUBLIC bool smatch(cchar *s1, cchar *s2);
         or > 0 if it sors higher.
     @stability Evolving
  */
-PUBLIC int sncaselesscmp(cchar *s1, cchar *s2, ssize len);
+PUBLIC int sncaselesscmp(cchar *s1, cchar *s2, size_t len);
 
 /**
     Clone a substring.
@@ -3645,7 +3929,7 @@ PUBLIC int sncaselesscmp(cchar *s1, cchar *s2, ssize len);
     @return Returns a newly allocated string.
     @stability Evolving
  */
-PUBLIC char *snclone(cchar *str, ssize len);
+PUBLIC char *snclone(cchar *str, size_t len);
 
 /**
     Compare strings.
@@ -3657,7 +3941,7 @@ PUBLIC char *snclone(cchar *str, ssize len);
         or > 0 if it sors higher.
     @stability Evolving
  */
-PUBLIC int sncmp(cchar *s1, cchar *s2, ssize len);
+PUBLIC int sncmp(cchar *s1, cchar *s2, size_t len);
 
 /**
     Find a pattern in a string with a limit.
@@ -3665,11 +3949,11 @@ PUBLIC int sncmp(cchar *s1, cchar *s2, ssize len);
        limit.
     @param str Pointer to the string to search.
     @param pattern String pattern to search for.
-    @param limit Count of characters in the string to search.
+    @param limit Count of characters in the string to search. If zero, the string length is used.
     @return Returns a reference to the start of the pattern in the string. If not found, returns NULL.
     @stability Evolving
  */
-PUBLIC char *sncontains(cchar *str, cchar *pattern, ssize limit);
+PUBLIC char *sncontains(cchar *str, cchar *pattern, size_t limit);
 
 /**
     Find a pattern in a string with a limit using a caseless comparison.
@@ -3678,11 +3962,11 @@ PUBLIC char *sncontains(cchar *str, cchar *pattern, ssize limit);
         Use a caseless comparison.
     @param str Pointer to the string to search.
     @param pattern String pattern to search for.
-    @param limit Count of characters in the string to search.
+    @param limit Count of characters in the string to search. If zero, the string length is used.
     @return Returns a reference to the start of the pattern in the string. If not found, returns NULL.
     @stability Evolving
  */
-PUBLIC char *sncaselesscontains(cchar *str, cchar *pattern, ssize limit);
+PUBLIC char *sncaselesscontains(cchar *str, cchar *pattern, size_t limit);
 
 /**
     Copy characters from a string.
@@ -3697,7 +3981,18 @@ PUBLIC char *sncaselesscontains(cchar *str, cchar *pattern, ssize limit);
     @return Returns a reference to the destination if successful or NULL if the string won't fit.
     @stability Evolving
  */
-PUBLIC ssize sncopy(char *dest, ssize destMax, cchar *src, ssize len);
+PUBLIC ssize sncopy(char *dest, size_t destMax, cchar *src, size_t len);
+
+/**
+    Catenate strings.
+    @description This catenates strings together.
+    @param dest Destination string to append to.
+    @param destMax Maximum size of the destination buffer in characters (including null terminator).
+    @param src Source string to append.
+    @return Returns the number of characters copied to the destination string, or -1 on error.
+    @stability Prototype
+ */
+PUBLIC ssize sncat(char *dest, size_t destMax, cchar *src);
 
 /*
     Test if a string is a floating point number
@@ -3816,7 +4111,7 @@ PUBLIC char *ssplit(char *str, cchar *delim, char **last);
         first null.
     @stability Evolving
  */
-PUBLIC ssize sspn(cchar *str, cchar *set);
+PUBLIC size_t sspn(cchar *str, cchar *set);
 
 /**
     Test if the string starts with a given pattern.
@@ -3915,7 +4210,7 @@ PUBLIC struct RList *stolist(cchar *src);
     @return Returns a newly allocated substring
     @stability Evolving
  */
-PUBLIC char *ssub(cchar *str, ssize offset, ssize length);
+PUBLIC char *ssub(cchar *str, size_t offset, size_t length);
 
 /*
     String trim flags
@@ -3954,7 +4249,7 @@ PUBLIC char *supper(char *str);
     @return Number of bytes in the destination buffer
     @stability Evolving
  */
-PUBLIC ssize sjoinbuf(char *buf, ssize bufsize, cchar *str1, cchar *str2);
+PUBLIC ssize sjoinbuf(char *buf, size_t bufsize, cchar *str1, cchar *str2);
 
 /**
     Parse a value string
@@ -3968,10 +4263,29 @@ PUBLIC ssize sjoinbuf(char *buf, ssize bufsize, cchar *str1, cchar *str2);
         year, years,
         byte, bytes, k, kb, m, mb, g, gb.
         Also supports the strings: unlimited, infinite, never, forever.
-    @return A 64 bit unsigned number
+    @param value String to parse
+    @return A 64 bit signed integer number
     @stability Evolving
  */
-PUBLIC uint64 svalue(cchar *value);
+PUBLIC int64 svalue(cchar *value);
+
+/**
+    Parse a value string to an integer. This is the same as svalue but returns an integer instead of a 64 bit signed
+       integer.
+    @description Parse a textual number with unit suffixes. The following suffixes are supported:
+        sec, secs, second, seconds,
+        min, mins, minute, minutes,
+        hr, hrs, hour, hours,
+        day, days,
+        week, weeks,
+        month, months,
+        year, years,
+        byte, bytes, k, kb, m, mb, g, gb.
+    @param value String to parse
+    @return A 64 bit signed integer number
+    @stability Evolving
+ */
+PUBLIC int svaluei(cchar *value);
 #endif /* R_USE_STRING */
 
 /********************************* Buffering **********************************/
@@ -3988,7 +4302,7 @@ PUBLIC uint64 svalue(cchar *value);
     However, it is still recommended that wherever possible, you use the accessor routines provided.
     @see RBuf RBufProc rAddNullToBuf rAdjustBufEnd rAdjustBufStart rBufToString rCloneBuf
         rCompactBuf rAllocBuf rFlushBuf rGetBlockFromBuf rGetBufEnd rGetBufLength
-        rGetBufSize rGetBufSpace rGetBufStart rGetCharFromBuf rGrowBuf rInserCharToBuf
+        rGetBufSize rGetBufSpace rGetBufStart rGetCharFromBuf rGrowBuf rGrowBufSize rInserCharToBuf
         rLookAtLastCharInBuf rLookAtNextCharInBuf rPutBlockToBuf rPutCharToBuf rPutToBuf
         rPutIntToBuf rPutStringToBuf rPutSubToBuf rResetBufIfEmpty rInitBuf
     @stability Internal.
@@ -3998,7 +4312,7 @@ typedef struct RBuf {
     char *endbuf;                      /**< Pointer one past the end of buffer */
     char *start;                       /**< Pointer to next data char */
     char *end;                         /**< Pointer one past the last data chr */
-    ssize buflen;                      /**< Current size of buffer */
+    size_t buflen;                     /**< Current size of buffer */
 } RBuf;
 
 /**
@@ -4011,7 +4325,7 @@ typedef struct RBuf {
     @returns Zero if successful and otherwise a negative error code
     @stability Evolving
  */
-PUBLIC int rInitBuf(RBuf *buf, ssize size);
+PUBLIC int rInitBuf(RBuf *buf, size_t size);
 
 /**
     Terminate a buffer
@@ -4029,7 +4343,7 @@ PUBLIC void rTermBuf(RBuf *buf);
     @return a new buffer
     @stability Evolving
  */
-PUBLIC RBuf *rAllocBuf(ssize initialSize);
+PUBLIC RBuf *rAllocBuf(size_t initialSize);
 
 /**
     Free a buffer
@@ -4117,7 +4431,7 @@ PUBLIC void rFlushBuf(RBuf *buf);
     @return The count of bytes read into the block or -1 if the buffer is empty.
     @stability Evolving
  */
-PUBLIC ssize rGetBlockFromBuf(RBuf *buf, char *blk, ssize count);
+PUBLIC ssize rGetBlockFromBuf(RBuf *buf, char *blk, size_t count);
 
 /**
     Get a reference to the end of the buffer contents
@@ -4192,7 +4506,19 @@ PUBLIC int rGetCharFromBuf(RBuf *buf);
     @returns Zero if successful and otherwise a negative error code.
     @stability Evolving
  */
-PUBLIC int rGrowBuf(RBuf *buf, ssize count);
+PUBLIC int rGrowBuf(RBuf *buf, size_t count);
+
+/**
+    Grow the buffer to a specific size
+    @description Grow the storage allocated for content for the buffer to the specified size.
+        If the buffer is already at least the specified size, no action is taken. The size
+        is rounded up to the next power of 2 for efficient memory allocation.
+    @param buf Buffer created via rAllocBuf
+    @param size Minimum total size for the buffer in bytes.
+    @returns Zero if successful and otherwise a negative error code.
+    @stability Evolving
+ */
+PUBLIC int rGrowBufSize(RBuf *buf, size_t size);
 
 /**
     Grow the buffer so that there is at least the needed minimum space available.
@@ -4203,7 +4529,7 @@ PUBLIC int rGrowBuf(RBuf *buf, ssize count);
     @returns Zero if successful and otherwise a negative error code.
     @stability Evolving
  */
-PUBLIC int rReserveBufSpace(RBuf *buf, ssize need);
+PUBLIC int rReserveBufSpace(RBuf *buf, size_t need);
 
 /**
     Inser a character into the buffer
@@ -4244,7 +4570,7 @@ PUBLIC int rLookAtLastCharInBuf(RBuf *buf);
     @returns Zero if successful and otherwise a negative error code
     @stability Evolving
  */
-PUBLIC ssize rPutBlockToBuf(RBuf *buf, cchar *ptr, ssize size);
+PUBLIC ssize rPutBlockToBuf(RBuf *buf, cchar *ptr, size_t size);
 
 /**
     Put a character to the buffer.
@@ -4296,7 +4622,7 @@ PUBLIC ssize rPutStringToBuf(RBuf *buf, cchar *str);
     @returns Zero if successful and otherwise a negative error code
     @stability Evolving
  */
-PUBLIC ssize rPutSubToBuf(RBuf *buf, cchar *str, ssize count);
+PUBLIC ssize rPutSubToBuf(RBuf *buf, cchar *str, size_t count);
 
 /**
     Reset the buffer
@@ -4309,9 +4635,9 @@ PUBLIC void rResetBufIfEmpty(RBuf *buf);
 /*
     Macros for speed
  */
-#define rGetBufLength(bp) ((bp) ? (ssize) ((bp)->end - (bp)->start) : 0)
-#define rGetBufSize(bp)   ((bp) ? (bp)->buflen : 0)
-#define rGetBufSpace(bp)  ((bp) ? ((bp)->endbuf - (bp)->end) : 0)
+#define rGetBufLength(bp) ((bp) ? (size_t) ((bp)->end - (bp)->start) : 0)
+#define rGetBufSize(bp)   ((bp) ? (size_t) ((bp)->buflen) : 0)
+#define rGetBufSpace(bp)  ((bp) ? (size_t) ((bp)->endbuf - (bp)->end) : 0)
 #define rGetBuf(bp)       ((bp) ? (bp)->data : 0)
 #define rGetBufStart(bp)  ((bp) ? (bp)->start : 0)
 #define rGetBufEnd(bp)    ((bp) ? (bp)->end : 0)
@@ -4332,10 +4658,10 @@ PUBLIC void rResetBufIfEmpty(RBuf *buf);
     @stability Internal.
  */
 typedef struct RList {
-    uint capacity;                      /**< Current list capacity */
-    uint length : 31;                   /**< Current length of the list contents */
-    uint flags : 1;                     /**< Items should be freed when list is freed */
-    void **items;                       /**< List item data */
+    int capacity;           /**< Current list capacity */
+    int length;             /**< Current length of the list contents */
+    int flags : 8;          /**< List flags: R_DYNAMIC_VALUE, R_STATIC_VALUE, R_TEMPORAL_VALUE */
+    void **items;           /**< List item data */
 } RList;
 
 /**
@@ -4386,6 +4712,9 @@ PUBLIC int rAddItem(RList *list, cvoid *item);
     Add a null item to the list.
     @description Add a null item to the list. This item does not count in the length returned by #rGetListLength
     and will not be visible when iterating using #rGetNextItem.
+    @param list List pointer returned from rAllocList.
+    @return Returns a list index for the null item. If the item cannot be added due to a memory allocation failure,
+        a negative RT error code is returned.
     @stability Evolving
  */
 PUBLIC int rAddNullItem(RList *list);
@@ -4533,7 +4862,7 @@ typedef int (*RSortProc)(cvoid *p1, cvoid *p2, void *ctx);
     @return The base array for chaining
     @stability Evolving
  */
-PUBLIC void *rSort(void *base, ssize num, ssize width, RSortProc compare, void *ctx);
+PUBLIC void *rSort(void *base, int num, int width, RSortProc compare, void *ctx);
 
 /**
     Sor a list
@@ -4549,7 +4878,8 @@ PUBLIC RList *rSortList(RList *list, RSortProc compare, void *ctx);
 /**
     Grow the list to be at least the requested size in elements.
     @param list List pointer returned from rAllocList.
-    @param size Required minimum size for the list.
+    @param size Required minimum number of elements for the list.
+    @return Zero if successful, otherwise a negative RT error code.
     @stability Evolving
  */
 PUBLIC int rGrowList(RList *list, int size);
@@ -4573,11 +4903,13 @@ PUBLIC void rPushItem(RList *list, void *item);
 PUBLIC void *rPopItem(RList *list);
 
 #define R_GET_ITEM(list, index) list->items[index]
+
+// NOTE - the index is incremented after the body executes
 #define ITERATE_ITEMS(list, item, index) \
         index = 0, item = 0; \
-        list && index < (int) list->length && ((item = list->items[index]) || 1); \
+        list && (uint) index < (uint) list->length && ((item = list->items[index]) || 1); \
         item = 0, index++
-#define rGetListLength(lp)      ((lp) ? (lp)->length : 0)
+#define rGetListLength(lp)      (int) ((lp) ? (lp)->length : 0)
 
 #endif /* R_USE_LIST */
 
@@ -4666,6 +4998,7 @@ PUBLIC bool rIsLogSet(void);
         environment variable is defined, it sepecifies the log message format. If these environment variables
         are defined, the "force" parameter must be used with rSetLog, rSetLogFilter and rSetLogFormat to
         override.
+    @return Zero if successful, otherwise a negative R error code.
     @stability Evolving
  */
 PUBLIC int rInitLog(void);
@@ -4902,13 +5235,12 @@ PUBLIC void print(cchar *fmt, ...);
 
 /**
     Dump the message and data block in hex to stdout
-    @param fmt Printf style format string. Variable number of arguments to print
+    @param msg Message to print
     @param block Data block to dump. Set to null if no data block
     @param len Size of data block
-    @param ... Variable number of arguments for printf data
     @stability Internal
  */
-PUBLIC void dump(cchar *msg, uchar *block, ssize len);
+PUBLIC void dump(cchar *msg, uchar *block, size_t len);
 #endif
 #endif /* R_USE_LOG */
 
@@ -4937,7 +5269,7 @@ PUBLIC void dump(cchar *msg, uchar *block, ssize len);
     @return An integer hash index
     @stability Internal.
  */
-typedef uint (*RHashProc)(cvoid *name, ssize len);
+typedef uint (*RHashProc)(cvoid *name, size_t len);
 
 /**
     Hash table structure.
@@ -4992,7 +5324,7 @@ typedef struct RName {
     @return Returns a pointer to the allocated hash table.
     @stability Evolving
  */
-PUBLIC RHash *rAllocHash(int size, int flags);
+PUBLIC RHash *rAllocHash(size_t size, int flags);
 
 /**
     Free a hash table
@@ -5053,7 +5385,7 @@ PUBLIC RName *rAddDuplicateName(RHash *hash, cchar *name, void *ptr, int flags);
     @return Added RName reference.
     @stability Evolving
  */
-PUBLIC RName *rAddNameSubstring(RHash *hash, cchar *name, ssize nameSize, char *value, ssize valueSize);
+PUBLIC RName *rAddNameSubstring(RHash *hash, cchar *name, size_t nameSize, char *value, size_t valueSize);
 
 /**
     Add a name and integer value.
@@ -5243,6 +5575,7 @@ PUBLIC char *rGetFilePath(cchar *path);
 /**
     Get a temp filename
     @description Create a temp file name in the given directory with the specified prefix.
+    Windows ignores dir and prefix.
     @param dir Directory to contain the temporary file. If null, use system default temp directory (/tmp).
     @param prefix Optional filename prefix.
     @return An allocated string containing the file name. Caller must free.
@@ -5262,7 +5595,7 @@ PUBLIC char *rGetTempFile(cchar *dir, cchar *prefix);
             with rFree().
     @stability Evolving
  */
-PUBLIC char *rReadFile(cchar *path, ssize *lenp);
+PUBLIC char *rReadFile(cchar *path, size_t *lenp);
 
 /**
     Flush file buffers
@@ -5282,7 +5615,7 @@ PUBLIC int rFlushFile(int fd);
     @return The length of bytes written to the file. Should equal len.
     @stability Evolving
  */
-PUBLIC ssize rWriteFile(cchar *path, cchar *buf, ssize len, int mode);
+PUBLIC ssize rWriteFile(cchar *path, cchar *buf, size_t len, int mode);
 
 /**
     Join file paths
@@ -5304,7 +5637,7 @@ PUBLIC char *rJoinFile(cchar *base, cchar *other);
     @returns Allocated string containing the resolved filename.
     @stability Evolving
  */
-PUBLIC char *rJoinFileBuf(char *buf, ssize bufsize, cchar *base, cchar *other);
+PUBLIC char *rJoinFileBuf(char *buf, size_t bufsize, cchar *base, cchar *other);
 
 /**
     Determine if a file path is an absolute path
@@ -5626,6 +5959,16 @@ PUBLIC char *rReadRegistry(cchar *key, cchar *name);
     @stability Evolving
  */
 PUBLIC int rWriteRegistry(cchar *key, cchar *name, cchar *value);
+
+/**
+    Parse a time string into a tm structure
+    @param buf Time string to parse
+    @param format Format string
+    @param tm Time structure to fill
+    @return A pointer to the tm structure
+    @stability Evolving
+ */
+PUBLIC char *strptime(const char *buf, const char *format, struct tm *tm);
 #endif /* ME_WIN_LIKE || CYGWIN */
 
 /*
@@ -5644,6 +5987,8 @@ PUBLIC void rTermEvents(void);
 #define R_SOCKET_EOF             0x2      /**< Seen end of file */
 #define R_SOCKET_LISTENER        0x4      /**< RSocket is server listener */
 #define R_SOCKET_SERVER          0x8      /**< Socket is on the server-side */
+#define R_SOCKET_FAST_CONNECT    0x10     /**< Fast connect mode */
+#define R_SOCKET_FAST_CLOSE      0x20     /**< Fast close mode */
 
 #ifndef ME_R_SSL_CACHE
     #define ME_R_SSL_CACHE       512
@@ -5663,7 +6008,26 @@ PUBLIC void rTermEvents(void);
 
 #define R_TLS_HAS_AUTHORITY      0x1    /**< Signal to the custom callback that authority certs are available */
 
+/**
+    Socket handler callback function.
+    @description This function is called by the socket layer when a new connection is accepted. The handler
+    is responsible for freeing the socket passed to it.
+    @param data Data passed to the handler.
+    @param sp Socket object.
+    @stability Evolving
+ */
 typedef void (*RSocketProc)(cvoid *data, struct RSocket *sp);
+
+/**
+    Custom socket configuration callback function.
+    @description This function is called by the socket layer to configure the socket. It is used on some platforms
+        (ESP32) to attach the certificate bundle to the socket.
+    @param sp Socket object.
+    @param cmd Command to execute.
+    @param arg Argument to the command.
+    @param flags Flags for the command.
+    @stability Evolving
+ */
 typedef void (*RSocketCustom)(struct RSocket *sp, int cmd, void *arg, int flags);
 
 /*
@@ -5674,9 +6038,10 @@ typedef void (*RSocketCustom)(struct RSocket *sp, int cmd, void *arg, int flags)
 typedef struct RSocket {
     Socket fd;                              /**< Actual socket file handle */
     struct Rtls *tls;
-    uint flags : 8;
+    int flags : 16;
     uint mask : 4;
     uint hasCert : 1;                       /**< TLS certificate defined */
+    int linger;                             /**< Linger timeout in seconds. -1 means no linger. */
     RSocketProc handler;
     void *arg;
     char *error;
@@ -5709,7 +6074,10 @@ PUBLIC bool rCheckInternet(void);
 /**
     Connect a client socket
     @description Open a client connection. May be called from a fiber or from main. This function is
-                 fiber-aware and will yield during the connection process when called from a fiber.
+        fiber-aware and will yield during the connection process when called from a fiber.
+        The connection strategy is two-pass. First it tries IPv4 addresses, then IPv6.
+        We use IPv4 addresses first to optimize for servers that only support IPv4. This is to avoid
+        issues with some systems where IPv6 dual-stack don't work reliably with localhost.
     @pre If using TLS, this must only be called from a fiber.
     @param sp Socket object returned via rAllocSocket. Must not be NULL.
     @param host Host or IP address to connect to. Must not be NULL.
@@ -5737,6 +6105,21 @@ PUBLIC void rDisconnectSocket(RSocket *sp);
 PUBLIC void rFreeSocket(RSocket *sp);
 
 /**
+    Get the maximum number of active sockets allowed.
+    @return The socket limit.
+    @stability Evolving
+ */
+PUBLIC int rGetSocketLimit(void);
+
+/**
+    Set the maximum number of active sockets allowed.
+    @description This sets a runtime limit on active sockets. Connections exceeding this limit will be rejected.
+    @param limit Maximum number of active sockets.
+    @stability Evolving
+ */
+PUBLIC void rSetSocketLimit(int limit);
+
+/**
     Get the locally bound socket IP address and port for the socket
     @description Get the file descriptor associated with a socket.
     @param sp Socket object returned from rAllocSocket
@@ -5746,11 +6129,11 @@ PUBLIC void rFreeSocket(RSocket *sp);
     @return Zero if successful.
     @stability Evolving
  */
-PUBLIC int rGetSocketAddr(RSocket *sp, char *ipbuf, int ipbufLen, int *port);
+PUBLIC int rGetSocketAddr(RSocket *sp, char *ipbuf, size_t ipbufLen, int *port);
 
 /**
-    Get the custom socket callback handler
-    @return The custom socket callback handler
+    Get the custom socket configuration callback
+    @return The custom socket callback
     @stability Evolving
  */
 PUBLIC RSocketCustom rGetSocketCustom(void);
@@ -5817,12 +6200,16 @@ PUBLIC bool rIsSocketSecure(RSocket *sp);
 /**
     Listen on a server socket for incoming connections
     @description Open a server socket and listen for client connections.
-        If host is null, then this will listen on both IPv6 and IPv4.
+        When dual-stack is available (IPV6_V6ONLY defined), prefer IPv6 to accept both IPv4 and
+        IPv6 connections via a single socket. When a specific host is an IPv4 address like "127.0.0.1",
+        use IPv4 only. When dual-stack is not available, let the system choose the interface.
+        NOTE: macosx dual-stack does not work reliably with localhost, so we use IPv4 only.
     @param sp Socket object returned via rAllocSocket
     @param host Host name or IP address to bind to. Set to 0.0.0.0 to bind to all possible addresses on a given port.
+       Supports IPv4, IPv6, wildcard and named hosts.
     @param port TCP/IP port number to connect to.
     @param handler Function callback to invoke for incoming connections. The function is invoked on a new fiber
-       coroutine.
+       coroutine. The handler is responsible for freeing the socket passed to it.
     @param arg Argument to handler.
     @return Zero if successful.
     @stability Evolving
@@ -5830,10 +6217,10 @@ PUBLIC bool rIsSocketSecure(RSocket *sp);
 PUBLIC int rListenSocket(RSocket *sp, cchar *host, int port, RSocketProc handler, void *arg);
 
 /**
-    Read from a socket.
-    @description Read data from a socket. The read will return with whatever bytes are available. If none is available,
-       this call
-        will yield the current fiber and resume the main fiber. When data is available, the fiber will resume.
+    Read from a socket until a deadline is reached.
+    @description Read data from a socket until a deadline is reached. The read will return with whatever bytes are
+        available. If none is available, this call will yield the current fiber and resume the main fiber. When data
+        is available, the fiber will resume.
     @pre Must be called from a fiber.
     @param sp Socket object returned from rAllocSocket
     @param buf Pointer to a buffer to hold the read data.
@@ -5845,14 +6232,16 @@ PUBLIC int rListenSocket(RSocket *sp, cchar *host, int port, RSocketProc handler
         distinguision between EOF and errors.
     @stability Evolving
  */
-PUBLIC ssize rReadSocket(RSocket *sp, char *buf, ssize bufsize, Ticks deadline);
+PUBLIC ssize rReadSocket(RSocket *sp, char *buf, size_t bufsize, Ticks deadline);
 
 /**
     Read from a socket.
-    @description Read data from a socket. The read will return with whatever bytes are available. If none and the socket
-        is in blocking mode, it will block until there is some data available or the socket is disconnected.
-        Use rSetSocketBlocking to change the socket blocking mode.
-        It is preferable to use rReadSocket which can wait without blocking via fiber coroutines.
+    @description Read data from a socket without yielding the current fiber. If the socket is in blocking mode,
+        this is a blocking read. The read will return with whatever bytes are available. If none are available,
+        the call will return -1 and set the socket error. If the socket is in blocking mode, it will block until
+        there is some data available or the socket is disconnected. Use rSetSocketBlocking to change the socket
+        blocking mode.  It is preferable to use rReadSocket which can wait without blocking via fiber coroutines
+        until a deadline is reached.
     @param sp Socket object returned from rAllocSocket
     @param buf Pointer to a buffer to hold the read data.
     @param bufsize Size of the buffer.
@@ -5861,7 +6250,7 @@ PUBLIC ssize rReadSocket(RSocket *sp, char *buf, ssize bufsize, Ticks deadline);
         distinguision between EOF and errors.
     @stability Evolving
  */
-PUBLIC ssize rReadSocketSync(RSocket *sp, char *buf, ssize bufsize);
+PUBLIC ssize rReadSocketSync(RSocket *sp, char *buf, size_t bufsize);
 
 /**
     Reset a socket
@@ -5886,7 +6275,9 @@ PUBLIC void rSetSocketCerts(RSocket *sp, cchar *ca, cchar *key, cchar *cert, cch
 
 /**
     Set the socket custom configuration callback
-    @param custom Custom callback function
+    @description This call is used to set the custom socket configuration callback. It is used on some platforms
+        (ESP32) to attach the certificate bundle to the socket.
+    @param custom Custom socket configuration callback function
     @stability Evolving
  */
 PUBLIC void rSetSocketCustom(RSocketCustom custom);
@@ -5936,6 +6327,28 @@ PUBLIC void rSetSocketDefaultCiphers(cchar *ciphers);
 PUBLIC int rSetSocketError(RSocket *sp, cchar *fmt, ...);
 
 /**
+    Set the socket linger timeout
+    @description Set the linger timeout for the socket. The linger timeout is the time to wait for the socket to be
+       closed.
+    If set to zero, the socket will be closed immediately with a RST packet instead of a FIN packet.
+    This API must be called before calling rConnectSocket.
+    @param sp Socket object returned from rAllocSocket
+    @param linger Timeout in seconds
+    @stability Evolving
+ */
+PUBLIC void rSetSocketLinger(RSocket *sp, int linger);
+
+/**
+    Set the TCP_NODELAY option to disable Nagle's algorithm.
+    @description Disabling Nagle's algorithm reduces latency for small packets at the cost of potentially
+        more network overhead. This is beneficial for interactive protocols.
+    @param sp Socket object returned from rAllocSocket
+    @param enable Set to 1 to enable TCP_NODELAY (disable Nagle), 0 to disable
+    @stability Evolving
+ */
+PUBLIC void rSetSocketNoDelay(RSocket *sp, int enable);
+
+/**
     Set the socket TLS verification parameters
     @description This call is a wrapper over rSetTlsCerts.
     @param sp Socket object returned from rAllocSocket
@@ -5964,42 +6377,56 @@ PUBLIC void rSetSocketDefaultVerify(int verifyPeer, int verifyIssuer);
 PUBLIC void rSetSocketWaitMask(RSocket *sp, int64 mask, Ticks deadline);
 
 /**
-    Write to a socket
-    @description Write a block of data to a socket. If the socket is in non-blocking mode (the default), the write
-        may return having written less than the required bytes. If no data can be written, this call
-            will yield the current fiber and resume the main fiber. When data is available, the fiber will resume.
+    Write to a socket until a deadline is reached
+    @description Write a block of data to a socket until a deadline is reached. This may return having written less
+        than the required bytes if the deadline is reached. This call will yield the current fiber and resume
+        the main fiber. When data is available, the fiber will resume.
     @pre Must be called from a fiber.
     @param sp Socket object returned from rAllocSocket
     @param buf Reference to a block to write to the socket
-    @param bufsize Length of data to write. This may be less than the requested write length if the socket is in
-       non-blocking
-        mode. Will return a negative error code on errors.
+    @param bufsize Length of data to write.
     @param deadline System time in ticks to wait until. Set to zero for no deadline.
-    @return A count of bytes actually written. Return a negative error code on errors and if the socket cannot absorb
-       any
-        more data. If the transport is saturated, will return a negative error and rGetError() returns EAGAIN
-        or EWOULDBLOCK.
+    @return A count of bytes actually written. Return a negative error code on errors and if the socket cannot
+        absorb any more data. If the transport is saturated, will return a negative error and rGetSocketError()
+        returns EAGAIN or EWOULDBLOCK.
     @stability Evolving
  */
-PUBLIC ssize rWriteSocket(RSocket *sp, cvoid *buf, ssize bufsize, Ticks deadline);
+PUBLIC ssize rWriteSocket(RSocket *sp, cvoid *buf, size_t bufsize, Ticks deadline);
 
 /**
     Write to a socket
-    @description Write a block of data to a socket. If the socket is in non-blocking mode (the default), the write
-        may return having written less than the required bytes.
-        It is preferable to use rWriteSocket which can wait without blocking via fiber coroutines.
+    @description Write a block of data to a socket without yielding the current fiber.
+        If the socket is in non-blocking mode (the default), the write may return having written less than
+        the required bytes. If it is in blocking mode, it will block until the data is written.
+        It is preferable to use rWriteSocket which can wait without blocking via fiber coroutines until
+        a deadline is reached.
     @param sp Socket object returned from rAllocSocket
     @param buf Reference to a block to write to the socket
-    @param len Length of data to write. This may be less than the requested write length if the socket is in
-       non-blocking
-        mode. Will return a negative error code on errors.
-    @return A count of bytes actually written. Return a negative error code on errors and if the socket cannot absorb
-       any
-        more data. If the transport is saturated, will return a negative error and rGetError() returns EAGAIN
-        or EWOULDBLOCK.
+    @param len Length of data to write. This may be less than the requested write length if the socket is
+        in non-blocking mode. Will return a negative error code on errors.
+    @return A count of bytes actually written. Return a negative error code on errors and if the socket cannot
+        absorb any more data. If the transport is saturated, will return a negative error and rGetError()
+        returns EAGAIN or EWOULDBLOCK.
     @stability Evolving
  */
-PUBLIC ssize rWriteSocketSync(RSocket *sp, cvoid *buf, ssize len);
+PUBLIC ssize rWriteSocketSync(RSocket *sp, cvoid *buf, size_t len);
+
+#if ME_HAS_SENDFILE
+/**
+    Send a file over a socket using zero-copy sendfile.
+    @description This function uses the kernel sendfile() system call to transfer data
+        directly from a file to a socket without copying through user space. This is
+        only available for non-TLS connections on supported platforms (Linux, macOS, FreeBSD).
+    @param sock RSocket pointer. Uses sock->wait if present for efficient I/O waiting.
+    @param fd File descriptor of the file to send.
+    @param offset File offset to start sending from.
+    @param len Number of bytes to send.
+    @return The number of bytes sent, or a negative error code on failure.
+        Returns -1 with errno set to ENOSYS on unsupported platforms.
+    @stability Evolving
+ */
+PUBLIC ssize rSendFile(RSocket *sock, int fd, Offset offset, size_t len);
+#endif
 
 #endif /* R_USE_SOCKET */
 
@@ -6034,7 +6461,7 @@ typedef struct RLock {
 #else
         #warning "Unsupported OS in RLock definition in r.h"
 #endif
-#if ME_DEBUG
+#if ME_DEBUG && KEEP
     RThread owner;
 #endif
     bool initialized;
@@ -6180,17 +6607,27 @@ PUBLIC RThread rGetMainThread(void);
 /************************************* Command ***********************************/
 #if R_USE_RUN
 
-#if ME_UNIX_LIKE
+#ifndef R_RUN_ARGS_MAX
+    #define R_RUN_ARGS_MAX   1024        /* Max args to parse */
+#endif
+
+#ifndef R_RUN_MAX_OUTPUT
+    #define R_RUN_MAX_OUTPUT 1024 * 1024 /* Max output to return */
+#endif
+
 /**
-    Run a command using the system shell
+    Run a command
     @description SECURITY: must only call with fully sanitized command input.
-    @param command Command string to run using popen()
+    @param command Command to invoke
     @param output Returns the command output. Caller must free.
     @return The command exit status or a negative error code.
     @stability Evolving.
  */
 PUBLIC int rRun(cchar *command, char **output);
-#endif
+
+/* Internal helpers for rRun implementation */
+PUBLIC ssize rMakeArgs(cchar *command, char ***argvp, bool argsOnly);
+
 #endif /* R_USE_RUN */
 
 /************************************** TLS **************************************/
@@ -6206,8 +6643,8 @@ PUBLIC void rSetTlsCiphers(struct Rtls *tls, cchar *ciphers);
 PUBLIC void rSetTlsVerify(struct Rtls *tls, int verifyPeer, int verifyIssuer);
 PUBLIC void rFreeTls(struct Rtls *tls);
 PUBLIC void rCloseTls(struct Rtls *tls);
-PUBLIC ssize rReadTls(struct Rtls *tls, void *buf, ssize len);
-PUBLIC ssize rWriteTls(struct Rtls *tls, cvoid *buf, ssize len);
+PUBLIC ssize rReadTls(struct Rtls *tls, void *buf, size_t len);
+PUBLIC ssize rWriteTls(struct Rtls *tls, cvoid *buf, size_t len);
 PUBLIC int rUpgradeTls(struct Rtls *tp, Socket fd, cchar *peer, Ticks deadline);
 PUBLIC int rConfigTls(struct Rtls *tp, bool server);
 PUBLIC struct Rtls *rAcceptTls(struct Rtls *tp, struct Rtls *listen);
@@ -6219,6 +6656,31 @@ PUBLIC void rSetTlsDefaultAlpn(cchar *ciphers);
 PUBLIC void rSetTlsDefaultCiphers(cchar *ciphers);
 PUBLIC void rSetTlsDefaultCerts(cchar *ca, cchar *key, cchar *cert, cchar *revoke);
 PUBLIC void rSetTlsDefaultVerify(int verifyPeer, int verifyIssuer);
+
+/**
+    Get the current TLS session for caching.
+    @description Returns the TLS session with incremented reference count. Caller must free with rFreeTlsSession.
+    @param sp Socket object
+    @return TLS session object or NULL if not available
+    @stability Evolving
+ */
+PUBLIC void *rGetTlsSession(RSocket *sp);
+
+/**
+    Set a cached TLS session for resumption on next connection.
+    @description Must be called after rSetTls() but before rConnectSocket().
+    @param sp Socket object
+    @param session TLS session object from rGetTlsSession
+    @stability Evolving
+ */
+PUBLIC void rSetTlsSession(RSocket *sp, void *session);
+
+/**
+    Free a TLS session object.
+    @param session TLS session object from rGetTlsSession
+    @stability Evolving
+ */
+PUBLIC void rFreeTlsSession(void *session);
 #endif /* R_USE_TLS */
 
 /********************************* Red Black Tree ********************************/
@@ -6441,12 +6903,12 @@ PUBLIC void rPlatformReport(char *label);
     This is proprietary software and requires a commercial license from the author.
  */
 
-
 /********* Start of file ../../../src/json.h ************/
 
-/**
+/*
     JSON5/JSON6 Parser and Manipulation Library
-    @description High-performance JSON parser and manipulation library for embedded IoT applications.
+
+    High-performance JSON parser and manipulation library for embedded IoT applications.
     Supports both traditional JSON and relaxed JSON5/JSON6 syntax with extended features for ease of use.
 
     This library provides a complete JSON processing solution including:
@@ -6475,9 +6937,9 @@ PUBLIC void rPlatformReport(char *label);
     - An empty string is allowed and returns an empty JSON instance.
     - Similarly a top level whitespace string is allowed and returns an empty JSON instance.
 
-    Use another tool if you need strict JSON validation.
+    Use another tool if you need strict JSON validation of input text.
 
-    @stability Evolving
+    Copyright (c) All Rights Reserved. See copyright notice at the bottom of the file.
  */
 
 #pragma once
@@ -6486,6 +6948,7 @@ PUBLIC void rPlatformReport(char *label);
 #define _h_JSON 1
 
 /********************************** Includes **********************************/
+
 
 
 
@@ -6521,23 +6984,27 @@ struct JsonNode;
     JSON node type constants
     @description These constants define the different types of nodes in the JSON tree.
     Each node has exactly one type that determines how its value should be interpreted.
+    The type is stored in the JsonNode.type field and can be tested using bitwise AND operations.
     @stability Evolving
  */
-#define JSON_OBJECT              0x1                  /**< Object node containing key-value pairs */
-#define JSON_ARRAY               0x2                  /**< Array node containing indexed elements */
-#define JSON_COMMENT             0x4                  /**< Comment node (JSON5 feature) */
-#define JSON_STRING              0x8                  /**< String value including ISO date strings */
+#define JSON_OBJECT              0x1                  /**< Object node containing key-value pairs as children */
+#define JSON_ARRAY               0x2                  /**< Array node containing indexed elements as children */
+#define JSON_COMMENT             0x4                  /**< Comment node (JSON5 feature, not preserved in output) */
+#define JSON_STRING              0x8                  /**< String value (including ISO date strings stored as strings)
+                                                       */
 #define JSON_PRIMITIVE           0x10                 /**< Primitive values: true, false, null, undefined, numbers */
-#define JSON_REGEXP              0x20                 /**< Regular expression literal (JSON6 feature) */
+#define JSON_REGEXP              0x20                 /**< Regular expression literal /pattern/flags (JSON6 feature) */
 
 /**
     JSON parsing flags
     @description Flags that control the behavior of JSON parsing operations.
     These can be combined using bitwise OR to enable multiple options.
+    Pass these flags to jsonParse(), jsonParseText(), or jsonParseFile().
     @stability Evolving
  */
-#define JSON_STRICT_PARSE        0x1                  /**< Parse in strict JSON format (no JSON5 extensions) */
-#define JSON_PASS_VALUE          0x2                  /**< Transfer string ownership to JSON object during parsing */
+#define JSON_STRICT_PARSE        0x1                  /**< Parse in strict RFC 7159 JSON format (no JSON5 extensions) */
+#define JSON_PASS_VALUE          0x2                  /**< Transfer string ownership to JSON object (avoids memory copy)
+                                                       */
 
 /**
     JSON rendering flags
@@ -6599,12 +7066,19 @@ struct JsonNode;
 #define JSON_STRICT              (JSON_STRICT_PARSE | JSON_JSON)
 
 /**
-    These macros iterates over the children under the "parent" id. The child->last points to one past the end of the
-    Property value and parent->last points to one past the end of the parent object.
-    WARNING: this macro requires a stable JSON collection. I.e. the collection must not be modified in the loop body.
-    Insertions and removals in prior nodes in the JSON tree will change the values pointed to by the child pointer and
-    will impact further iterations.
-    The jsonCheckIteration function will catch some (but not all) modifications to the JSON tree.
+    Iteration macros for traversing JSON tree children
+    @description These macros iterate over child nodes under a parent node. The child->last field points to one past
+    the end of the property's value subtree, and parent->last points to one past the end of the parent object/array.
+
+    WARNING: These macros require a stable JSON tree. Do not modify the tree during iteration (no jsonSet, jsonRemove,
+    or jsonBlend calls). Insertions and removals will invalidate the child pointer and corruption iteration state.
+    The jsonCheckIteration() function will detect some (but not all) tree modifications during iteration.
+
+    Example usage:
+        JsonNode *child;
+        for (ITERATE_JSON(json, parentNode, child, nid)) {
+            printf("Child: %s\\n", child->name);
+        }
  */
 
 /**
@@ -6678,27 +7152,27 @@ struct JsonNode;
     @stability Evolving
  */
 typedef struct Json {
-    struct JsonNode *nodes;              /**< Array of JSON nodes forming the tree structure */
+    struct JsonNode *nodes;          /**< Array of JSON nodes forming the tree structure */
 #if R_USE_EVENT
-    REvent event;                        /**< Event structure for asynchronous saving operations */
+    REvent event;                    /**< Event structure for asynchronous saving operations */
 #endif
-    char *text;                          /**< Original JSON text being parsed (will be modified during parsing) */
-char *end;                           /**< Pointer to one byte past the end of the text buffer */
-char *next;                          /**< Current parsing position in the text buffer */
-char *path;                          /**< File path if JSON was loaded from a file (for error reporting) */
-char *error;                         /**< Detailed error message from parsing failures */
-char *property;                      /**< Internal buffer for building property names during parsing */
-ssize propertyLength;                /**< Current allocated size of the property buffer */
-    char *value;                         /**< Cached serialized string result from jsonString() calls */
-    uint size;                           /**< Total allocated capacity of the nodes array */
-    uint count;                          /**< Number of nodes currently used in the tree */
-    uint lineNumber : 16;                /**< Current line number during parsing (for error reporting) */
-    uint lock : 1;                       /**< Lock flag preventing modifications when set */
-    uint flags : 7;                      /**< Internal parser flags (reserved for library use) */
-    uint userFlags : 8;                  /**< Application-specific flags available for user use */
+    char *text;                      /**< Original JSON text being parsed (will be modified during parsing) */
+    char *end;                       /**< Pointer to one byte past the end of the text buffer */
+    char *next;                      /**< Current parsing position in the text buffer */
+    char *path;                      /**< File path if JSON was loaded from a file (for error reporting) */
+    char *error;                     /**< Detailed error message from parsing failures */
+    char *property;                  /**< Internal buffer for building property names during parsing */
+    size_t propertyLength;           /**< Current allocated size of the property buffer */
+    char *value;                     /**< Cached serialized string result from jsonString() calls */
+    int size;                        /**< Total allocated capacity of the nodes array */
+    int count;                       /**< Number of nodes currently used in the tree */
+    int lineNumber : 16;             /**< Current line number during parsing (for error reporting) */
+    uint lock : 1;                   /**< Lock flag preventing modifications when set */
+    uint flags : 7;                  /**< Internal parser flags (reserved for library use) */
+    uint userFlags : 8;              /**< Application-specific flags available for user use */
 #if JSON_TRIGGER
-    JsonTrigger trigger;                 /**< Optional callback function for monitoring changes */
-    void *triggerArg;                    /**< User argument passed to the trigger callback */
+    JsonTrigger trigger;             /**< Optional callback function for monitoring changes */
+    void *triggerArg;                /**< User argument passed to the trigger callback */
 #endif
 } Json;
 
@@ -6943,7 +7417,7 @@ PUBLIC int jsonGetInt(Json *json, int nid, cchar *key, int defaultValue);
     @param nid Base node ID from which to examine. Set to zero for the top level.
     @param key Property name to search for. This may include ".". For example: "settings.mode".
     @param defaultValue If the key is not defined, return the defaultValue.
-    @return The key value as a date or defaultValue if not defined
+    @return The key value as a date or defaultValue if not defined. Return -1 if the date is invalid.
     @stability Evolving
  */
 PUBLIC Time jsonGetDate(Json *json, int nid, cchar *key, int64 defaultValue);
@@ -6976,10 +7450,10 @@ PUBLIC int64 jsonGetNum(Json *json, int nid, cchar *key, int64 defaultValue);
     @param nid Base node ID from which to examine. Set to zero for the top level.
     @param key Property name to search for. This may include ".". For example: "settings.mode".
     @param defaultValue If the key is not defined, return the defaultValue.
-    @return The key value as a uint64 or defaultValue if not defined
+    @return The key value as a int64 or defaultValue if not defined
     @stability Evolving
  */
-PUBLIC uint64 jsonGetValue(Json *json, int nid, cchar *key, cchar *defaultValue);
+PUBLIC int64 jsonGetValue(Json *json, int nid, cchar *key, cchar *defaultValue);
 
 /**
     Get a json node ID

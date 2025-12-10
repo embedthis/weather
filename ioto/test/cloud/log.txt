@@ -1,0 +1,25 @@
+ioto: info: Starting Ioto 3.0.0, with "unit" app 1.3.0, using "dev" profile
+ioto: info: Enabling services: db mqtt provision register sync serialize web
+ioto: info: Device Claim ID: 8TFYZR07JQ
+web: info: Listening http://localhost:9030
+mqtt: info: Schedule MQTT connect in 0 secs
+ioto: info: Ioto ready
+test: info: Running health test
+test: info: Run test: health
+test: info: Running url.get test
+test: info: Run test: url
+test: info: Running sync.store test
+mqtt: info: Connected to mqtt://am33mh6ca7sr4-ats.iot.ap-southeast-1.amazonaws.com:443
+test: info: Run test: store-sync: counter 0
+test: info: Running mqtt.request test
+test: info: Run test: mqttRequest
+test: info: Running mqtt.store test
+test: info: Run test: store-mqtt: set counter 0
+test: info: store-mqtt: get result 1.000000
+test: info: Running mqtt.ping test
+test: info: Run test: mqttPing
+test: info: Running metric.getset test
+test: info: Got metric value 20.169839
+test: info: Running metric.getset test
+test: info: Got metric value 20.935311
+ioto: info: Ioto exiting

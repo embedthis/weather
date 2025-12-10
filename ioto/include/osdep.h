@@ -198,17 +198,17 @@
     #define ME_CPU_ARCH ME_CPU_ALPHA
     #define CPU_ENDIAN ME_LITTLE_ENDIAN
 
-#elif defined(__arm64__) || defined(__aarch64__)
+#elif defined(__arm64__) || defined(__aarch64__) || defined(_M_ARM64)
     #define ME_CPU "arm64"
     #define ME_CPU_ARCH ME_CPU_ARM64
     #define CPU_ENDIAN ME_LITTLE_ENDIAN
 
-#elif defined(__arm__)
+#elif defined(__arm__) || defined(_M_ARM)
     #define ME_CPU "arm"
     #define ME_CPU_ARCH ME_CPU_ARM
     #define CPU_ENDIAN ME_LITTLE_ENDIAN
 
-#elif defined(__x86_64__) || defined(_M_AMD64)
+#elif defined(__x86_64__) || defined(_M_AMD64) || defined(__amd64__) || defined(__amd64)
     #define ME_CPU "x64"
     #define ME_CPU_ARCH ME_CPU_X64
     #define CPU_ENDIAN ME_LITTLE_ENDIAN
@@ -233,14 +233,15 @@
     #define ME_CPU_ARCH ME_CPU_MIPS64
     #define CPU_ENDIAN ME_BIG_ENDIAN
 
-#elif defined(__ppc__) || defined(__powerpc__) || defined(__ppc)
+#elif defined(__ppc64__) || defined(__powerpc64__)
+    #define ME_CPU "ppc64"
+    #define ME_CPU_ARCH ME_CPU_PPC64
+    #define CPU_ENDIAN ME_BIG_ENDIAN
+
+#elif defined(__ppc__) || defined(__powerpc__) || defined(__ppc) || defined(__POWERPC__)
     #define ME_CPU "ppc"
     #define ME_CPU_ARCH ME_CPU_PPC
     #define CPU_ENDIAN ME_BIG_ENDIAN
-
-#elif defined(__ppc64__)
-    #define CPU "ppc64"
-    #define CPU_ARCH CPU_PPC64
 
 #elif defined(__sparc__)
     #define ME_CPU "sparc"
@@ -258,20 +259,20 @@
     #define ME_CPU_ARCH ME_CPU_SH
     #define CPU_ENDIAN ME_LITTLE_ENDIAN
 
-#elif defined(__riscv_32)
-    #define ME_CPU "riscv"
-    #define ME_CPU_ARCH ME_CPU_RISCV
-    #define ME_CPU_ENDIAN ME_LITTLE_ENDIAN
-
-#elif defined(__riscv_64)
+#elif defined(__riscv) && (__riscv_xlen == 64)
     #define ME_CPU "riscv64"
     #define ME_CPU_ARCH ME_CPU_RISCV64
-    #define ME_CPU_ENDIAN ME_LITTLE_ENDIAN
+    #define CPU_ENDIAN ME_LITTLE_ENDIAN
 
-#elif defined(__XTENSA__)
+#elif defined(__riscv) && (__riscv_xlen == 32)
+    #define ME_CPU "riscv"
+    #define ME_CPU_ARCH ME_CPU_RISCV
+    #define CPU_ENDIAN ME_LITTLE_ENDIAN
+
+#elif defined(__XTENSA__) || defined(__xtensa__)
     #define ME_CPU "xtensa"
     #define ME_CPU_ARCH ME_CPU_XTENSA
-    #define ME_CPU_ENDIAN ME_LITTLE_ENDIAN
+    #define CPU_ENDIAN ME_LITTLE_ENDIAN
 #else
     #error "Cannot determine CPU type in osdep.h"
 #endif
@@ -414,6 +415,7 @@
     #define ME_UNIX_LIKE 0
     #define ME_WIN_LIKE 0
     #define HAS_USHORT 1
+    #define PTHREADS 1
 
 #elif defined(ECOS)
     /* ECOS may not have a pre-defined symbol */
@@ -649,6 +651,7 @@
     #include    <netinet/ip.h>
 #endif
 #if ME_UNIX_LIKE
+    #include    <stdbool.h>
     #include    <pthread.h>
     #include    <pwd.h>
 #if !CYGWIN
@@ -663,9 +666,8 @@
     #include    <setjmp.h>
     #include    <signal.h>
     #include    <stdarg.h>
-#if ME_UNIX_LIKE
+    #include    <stddef.h>
     #include    <stdint.h>
-#endif
     #include    <stdio.h>
     #include    <stdlib.h>
     #include    <string.h>
@@ -706,6 +708,7 @@
     #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
         #include    <sys/epoll.h>
     #endif
+    #include    <malloc.h>
     #include    <sys/prctl.h>
     #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,22)
         #include    <sys/eventfd.h>
@@ -720,6 +723,17 @@
         #include    <sys/sendfile.h>
     #endif
 #endif
+
+/*
+    Sendfile support for zero-copy file transfers
+ */
+#if LINUX && !__UCLIBC__
+    #define ME_HAS_SENDFILE 1
+#elif MACOSX || FREEBSD
+    #define ME_HAS_SENDFILE 1
+#else
+    #define ME_HAS_SENDFILE 0
+#endif
 #if MACOSX
     #include    <stdbool.h>
     #include    <mach-o/dyld.h>
@@ -727,6 +741,7 @@
     #include    <mach/mach_init.h>
     #include    <mach/mach_time.h>
     #include    <mach/task.h>
+    #include    <malloc/malloc.h>
     #include    <libkern/OSAtomic.h>
     #include    <net/if_dl.h>
 #endif
@@ -771,7 +786,6 @@
 #endif
 
 #if FREERTOS
-    #include <stddef.h>
     #include <string.h>
     #include "time.h"
 #if ESP32
@@ -822,7 +836,7 @@
 */
 #ifndef HAS_BOOL
     #ifndef __cplusplus
-        #if !MACOSX && !FREERTOS
+        #if !ME_UNIX_LIKE && !FREERTOS
             #define HAS_BOOL 1
             /**
                 Boolean data type.
@@ -994,17 +1008,16 @@
 
 #ifndef HAS_SSIZE
     #define HAS_SSIZE 1
-    #if ME_UNIX_LIKE || VXWORKS || DOXYGEN
+    #if ME_WIN_LIKE
+        typedef SSIZE_T ssize;
+        typedef SSIZE_T ssize_t;
+    #else
         /**
             Signed size type for memory and I/O operations.
             @description Platform-appropriate signed integer type large enough to hold array indices, memory sizes,
             and I/O transfer counts. Can represent negative values for error conditions. Equivalent to size_t but signed.
             @stability Stable
          */
-        typedef ssize_t ssize;
-    #elif ME_WIN_LIKE
-        typedef SSIZE_T ssize;
-    #else
         typedef ssize_t ssize;
     #endif
 #endif
@@ -1157,8 +1170,14 @@ typedef int64 Ticks;
         #undef isnan
         #define isnan(n)  ((n) != (n))
         #define isnanf(n) ((n) != (n))
-        #define isinf(n)  ((n) == (1.0 / 0.0) || (n) == (-1.0 / 0.0))
-        #define isinff(n) ((n) == (1.0 / 0.0) || (n) == (-1.0 / 0.0))
+        #if defined(__GNUC__)
+            #define isinf(n)  __builtin_isinf(n)
+            #define isinff(n) __builtin_isinff(n)
+        #else
+            #include <math.h>
+            #define isinf(n)  ((n) == HUGE_VAL || (n) == -HUGE_VAL)
+            #define isinff(n) ((n) == HUGE_VALF || (n) == -HUGE_VALF)
+        #endif
     #endif
     #if ME_WIN_LIKE
         #define isNan(f) (_isnan(f))
@@ -1200,20 +1219,16 @@ typedef int64 Ticks;
     #define MAXUINT64   INT64(0xffffffffffffffff)
 #endif
 
-#if SIZE_T_MAX
-    #define MAXSIZE     SIZE_T_MAX
-#elif ME_64
-    #define MAXSIZE     INT64(0xffffffffffffffff)
-#else
-    #define MAXSIZE     MAXINT
-#endif
-
-#if SSIZE_T_MAX
-    #define MAXSSIZE     SSIZE_T_MAX
+#if SSIZE_MAX
+    #define MAXSSIZE     ((ssize) SSIZE_MAX)
 #elif ME_64
     #define MAXSSIZE     INT64(0x7fffffffffffffff)
 #else
     #define MAXSSIZE     MAXINT
+#endif
+
+#ifndef SSIZE_MAX
+    #define SSIZE_MAX    MAXSSIZE
 #endif
 
 #if OFF_T_MAX
@@ -1374,9 +1389,9 @@ typedef int64 Ticks;
     #define LD_LIBRARY_PATH "LD_LIBRARY_PATH"
 #endif
 
-#if VXWORKS
+#if VXWORKS || WINDOWS
     /*
-        Old VxWorks cannot do array[]
+        Use in arra[ARRAY_FLEX] to avoid compiler warnings
      */
     #define ARRAY_FLEX 0
 #else
@@ -1656,6 +1671,7 @@ typedef int64 Ticks;
     #define MSG_NOSIGNAL    0
     #define FILE_BINARY     "b"
     #define FILE_TEXT       "t"
+    #define O_CLOEXEC       0
 
     /*
         Error codes
@@ -1723,6 +1739,7 @@ typedef int64 Ticks;
     #endif
 
     #if !WINCE
+    #ifndef access
     #define access      _access
     #define chdir       _chdir
     #define chmod       _chmod
@@ -1747,8 +1764,33 @@ typedef int64 Ticks;
     #define write       _write
     PUBLIC void         sleep(int secs);
     #endif
+    #endif
+
+    #ifndef strcasecmp
     #define strcasecmp scaselesscmp
     #define strncasecmp sncaselesscmp
+    #endif
+    #ifndef strncasecmp
+        #define strncasecmp sncaselesscmp
+    #endif
+
+    /*
+        Define S_ISREG and S_ISDIR macros for Windows if not already defined
+     */
+    #ifndef S_ISDIR
+        #define S_ISDIR(m) (((m) & _S_IFMT) == _S_IFDIR)
+    #endif
+    #ifndef S_ISREG
+        #define S_ISREG(m) (((m) & _S_IFMT) == _S_IFREG)
+    #endif
+
+    /*
+        Define strtok_r for Windows if not already defined
+    */
+    #ifndef strtok_r
+        #define strtok_r strtok_s
+    #endif
+
     #pragma comment( lib, "ws2_32.lib" )
 #endif /* WIN_LIKE */
 
@@ -1787,6 +1829,13 @@ typedef int64 Ticks;
     #endif
     #ifndef S_ISREG
         #define S_ISREG(X) (((X) & S_IFMT) == S_IFREG)
+    #endif
+
+    /*
+        Windows uses strtok_s instead of strtok_r
+     */
+    #ifndef strtok_r
+        #define strtok_r strtok_s
     #endif
 
     #define STARTF_USESHOWWINDOW 0

@@ -3,7 +3,7 @@
 
       <ItemDefinitionGroup>
         <ClCompile>
-          <PreprocessorDefinitions>ME_DEBUG=1;_CRT_SECURE_NO_WARNINGS=1;ME_COM_OPENSSL_PATH=/path/to/openssl;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+          <PreprocessorDefinitions>ME_DEBUG=1;_CRT_SECURE_NO_WARNINGS=1;APP=$(APP);ME_COM_OPENSSL_PATH=$(USERPROFILE)\vcpkg\installed\$(ARCH)-windows;%(PreprocessorDefinitions)</PreprocessorDefinitions>
           <AdditionalIncludeDirectories>$(IncDir);$(ME_COM_OPENSSL_PATH)/include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
@@ -14,7 +14,7 @@
       </ItemDefinitionGroup>
 
       <PropertyGroup Label="Globals">
-        <ProjectGuid>{f5035536-33b8-42a6-8b66-864da08b988f}</ProjectGuid>
+        <ProjectGuid>{1750d4be-7507-48bf-a6ee-9a0f9c0e4f72}</ProjectGuid>
         <RootNamespace />
         <Keyword>Win32Proj</Keyword>
       </PropertyGroup>
@@ -36,6 +36,14 @@
           <Configuration>Release</Configuration>
           <Platform>x64</Platform>
         </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|arm64">
+          <Configuration>Debug</Configuration>
+          <Platform>arm64</Platform>
+        </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|arm64">
+          <Configuration>Release</Configuration>
+          <Platform>arm64</Platform>
+        </ProjectConfiguration>
   </ItemGroup>
     
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
@@ -54,6 +62,16 @@
         <PlatformToolset>v141</PlatformToolset>
       </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+        <ConfigurationType>StaticLibrary</ConfigurationType>
+        <CharacterSet>NotSet</CharacterSet>
+        <PlatformToolset>v141</PlatformToolset>
+      </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|arm64'" Label="Configuration">
+        <ConfigurationType>StaticLibrary</ConfigurationType>
+        <CharacterSet>NotSet</CharacterSet>
+        <PlatformToolset>v141</PlatformToolset>
+      </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|arm64'" Label="Configuration">
         <ConfigurationType>StaticLibrary</ConfigurationType>
         <CharacterSet>NotSet</CharacterSet>
         <PlatformToolset>v141</PlatformToolset>
@@ -83,6 +101,16 @@
         <Import Project="release.props" />
         <Import Project="x64.props" />
       </ImportGroup>
+      <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|arm64'" Label="PropertySheets">
+        <Import Project="product.props" />
+        <Import Project="debug.props" />
+        <Import Project="arm64.props" />
+      </ImportGroup>
+      <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|arm64'" Label="PropertySheets">
+        <Import Project="product.props" />
+        <Import Project="release.props" />
+        <Import Project="arm64.props" />
+      </ImportGroup>      
 
       <PropertyGroup>
         <_ProjectFileVersion>10</_ProjectFileVersion>
@@ -102,21 +130,51 @@
         <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(BinDir)\</OutDir>
         <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(ObjDir)\libioto\</IntDir>
         <CustomBuildBeforeTargets Condition="'$(Configuration)|$(Platform)'=='Release|x64'">PreBuildEvent</CustomBuildBeforeTargets>
+
+        <OutDir Condition="'$(Configuration)|$(Platform)'=='Debug|arm64'">$(BinDir)\</OutDir>
+        <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug|arm64'">$(ObjDir)\libioto\</IntDir>
+        <CustomBuildBeforeTargets Condition="'$(Configuration)|$(Platform)'=='Debug|arm64'">PreBuildEvent</CustomBuildBeforeTargets>
+
+        <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|arm64'">$(BinDir)\</OutDir>
+        <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|arm64'">$(ObjDir)\libioto\</IntDir>
+        <CustomBuildBeforeTargets Condition="'$(Configuration)|$(Platform)'=='Release|arm64'">PreBuildEvent</CustomBuildBeforeTargets>
   </PropertyGroup>
   
       <ItemGroup>
     <ClCompile Include="..\..\lib\cryptLib.c" />
     <ClCompile Include="..\..\lib\dbLib.c" />
-    <ClCompile Include="..\..\lib\iotoLib.c" />
     <ClCompile Include="..\..\lib\jsonLib.c" />
     <ClCompile Include="..\..\lib\mqttLib.c" />
     <ClCompile Include="..\..\lib\openaiLib.c" />
     <ClCompile Include="..\..\lib\rLib.c" />
-    <ClCompile Include="..\..\lib\uctxAssembly.S" />
     <ClCompile Include="..\..\lib\uctxLib.c" />
     <ClCompile Include="..\..\lib\urlLib.c" />
     <ClCompile Include="..\..\lib\webLib.c" />
-    <ClCompile Include="..\..\lib\websocketsLib.c" />
+    <ClCompile Include="..\..\lib\websockLib.c" />
+    <ClCompile Include="..\..\src\agent.c" />
+    <ClCompile Include="..\..\src\ai.c" />
+    <ClCompile Include="..\..\src\app.c" />
+    <ClCompile Include="..\..\src\cloud\cloud.c" />
+    <ClCompile Include="..\..\src\cloud\cloudwatch.c" />
+    <ClCompile Include="..\..\src\cloud\helpers.c" />
+    <ClCompile Include="..\..\src\cloud\logs.c" />
+    <ClCompile Include="..\..\src\cloud\provision.c" />
+    <ClCompile Include="..\..\src\cloud\shadow.c" />
+    <ClCompile Include="..\..\src\cloud\sync.c" />
+    <ClCompile Include="..\..\src\cloud\update.c" />
+    <ClCompile Include="..\..\src\config.c" />
+    <ClCompile Include="..\..\src\cron.c" />
+    <ClCompile Include="..\..\src\database.c" />
+    <ClCompile Include="..\..\src\esp32.c" />
+    <ClCompile Include="..\..\src\mqtt.c" />
+    <ClCompile Include="..\..\src\register.c" />
+    <ClCompile Include="..\..\src\serialize.c" />
+    <ClCompile Include="..\..\src\setup.c" />
+    <ClCompile Include="..\..\src\webserver.c" />
+  </ItemGroup>
+
+      <ItemGroup>
+    <ClInclude Include="$(IncDir)\config.h" />
   </ItemGroup>
 
       <ItemGroup>
@@ -128,19 +186,11 @@
   </ItemGroup>
 
       <ItemGroup>
-    <ClInclude Include="$(IncDir)\ioto-config.h" />
-  </ItemGroup>
-
-      <ItemGroup>
     <ClInclude Include="$(IncDir)\ioto.h" />
   </ItemGroup>
 
       <ItemGroup>
     <ClInclude Include="$(IncDir)\json.h" />
-  </ItemGroup>
-
-      <ItemGroup>
-    <ClInclude Include="$(IncDir)\me.h" />
   </ItemGroup>
 
       <ItemGroup>
@@ -180,7 +230,7 @@
   </ItemGroup>
 
       <ItemGroup>
-    <ClInclude Include="$(IncDir)\websockets.h" />
+    <ClInclude Include="$(IncDir)\websock.h" />
   </ItemGroup>
 
       <ItemDefinitionGroup>
@@ -193,12 +243,11 @@
 
       <CustomBuildStep>
         <Command>cd ..\..
+copy /Y /B include\config.h $(IncDir)
 copy /Y /B include\crypt.h $(IncDir)
 copy /Y /B include\db.h $(IncDir)
-copy /Y /B include\ioto-config.h $(IncDir)
 copy /Y /B include\ioto.h $(IncDir)
 copy /Y /B include\json.h $(IncDir)
-copy /Y /B include\me.h $(IncDir)
 copy /Y /B include\mqtt.h $(IncDir)
 copy /Y /B include\openai.h $(IncDir)
 copy /Y /B include\osdep.h $(IncDir)
@@ -208,7 +257,7 @@ copy /Y /B include\uctx-os.h $(IncDir)
 copy /Y /B include\uctx.h $(IncDir)
 copy /Y /B include\url.h $(IncDir)
 copy /Y /B include\web.h $(IncDir)
-copy /Y /B include\websockets.h $(IncDir)
+copy /Y /B include\websock.h $(IncDir)
 cd projects\ioto-windows-default</Command>
         <Outputs>$(BinDir)\libioto.lib</Outputs>
       </CustomBuildStep>
@@ -217,5 +266,6 @@ cd projects\ioto-windows-default</Command>
   <Import Project="$(VCTargetsPath)Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
+
 
 </Project>

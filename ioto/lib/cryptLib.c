@@ -68,12 +68,12 @@ PUBLIC char *cryptDecode64(cchar *s)
     return cryptDecode64Block(s, NULL, CRYPT_DECODE_TOKEQ);
 }
 
-char *cryptEncode64Block(cuchar *input, ssize len)
+char *cryptEncode64Block(cuchar *input, size_t len)
 {
     char   *encoded;
-    ssize  count, size;
+    size_t i, count, prior, size;
     uint32 a, b, c, combined;
-    int    i, j, prior;
+    int    j;
 
     if (input == NULL || len == 0) {
         return NULL;
@@ -88,7 +88,7 @@ char *cryptEncode64Block(cuchar *input, ssize len)
         b = i < len ? input[i++] : 0;
         c = i < len ? input[i++] : 0;
 
-        count = i - prior;
+        count = (size_t) (i - prior);
         combined = (a << 16) | (b << 8) | c;
 
         encoded[j++] = encodeMap[(combined >> 18) & 0x3F];
@@ -101,12 +101,12 @@ char *cryptEncode64Block(cuchar *input, ssize len)
 }
 
 
-PUBLIC char *cryptDecode64Block(cchar *input, ssize *outputLen, int flags)
+PUBLIC char *cryptDecode64Block(cchar *input, size_t *outputLen, int flags)
 {
     char   *decoded;
-    ssize  len, size;
+    size_t i, j, len, size;
     uint32 a, b, c, d, combined;
-    int    i, j, pad;
+    int    pad;
 
     if (input == NULL) {
         return NULL;
@@ -127,7 +127,7 @@ PUBLIC char *cryptDecode64Block(cchar *input, ssize *outputLen, int flags)
     if (input[len - 2] == '=') pad++;
 
     // Calculate the output length
-    size = len / 4 * 3 - pad;
+    size = len / 4 * 3 - (size_t) pad;
 
     if ((decoded = rAlloc(size + 1)) == NULL) {
         return NULL;
@@ -151,9 +151,9 @@ PUBLIC char *cryptDecode64Block(cchar *input, ssize *outputLen, int flags)
         }
         combined = (a << 18) | (b << 12) | (c << 6) | d;
 
-        if (j < size) decoded[j++] = (combined >> 16) & 0xFF;
-        if (j < size) decoded[j++] = (combined >> 8) & 0xFF;
-        if (j < size) decoded[j++] = combined & 0xFF;
+        if (j < size) decoded[j++] = (char) (combined >> 16) & 0xFF;
+        if (j < size) decoded[j++] = (char) (combined >> 8) & 0xFF;
+        if (j < size) decoded[j++] = (char) (combined & 0xFF);
 
         if (flags & CRYPT_DECODE_TOKEQ) {
             if (input[i] == '=' && (input[i + 1] == '=' || input[i + 1] == '\0')) {
@@ -236,7 +236,7 @@ typedef struct {
     uint state[4];
     uint count[2];
     uchar buffer[64];
-} RMd5;
+} CryptMd5;
 #endif
 
 static void transformMd5(uint state[4], uchar block[64]);
@@ -246,7 +246,7 @@ static void decodeMd5(uint *output, uchar *input, uint len);
 /*
     MD5 initialization. Begins an MD5 operation, writing a new context.
  */
-PUBLIC void cryptMd5Init(RMd5 *ctx)
+PUBLIC void cryptMd5Init(CryptMd5 *ctx)
 {
     ctx->count[0] = ctx->count[1] = 0;
     ctx->state[0] = 0x67452301;
@@ -260,7 +260,7 @@ PUBLIC void cryptMd5Init(RMd5 *ctx)
     MD5 block update operation. Continues an MD5 message-digest operation, processing another message block,
     and updating the context.
  */
-PUBLIC void cryptMd5Update(RMd5 *ctx, uchar *input, uint inputLen)
+PUBLIC void cryptMd5Update(CryptMd5 *ctx, uchar *input, uint inputLen)
 {
     uint i, index, partLen;
 
@@ -289,7 +289,7 @@ PUBLIC void cryptMd5Update(RMd5 *ctx, uchar *input, uint inputLen)
 /*
     MD5 finalization. Ends an MD5 message-digest operation, writing the message digest and zeroing the context.
  */
-PUBLIC void cryptMd5Finalize(RMd5 *ctx, uchar digest[CRYPT_MD5_SIZE])
+PUBLIC void cryptMd5Finalize(CryptMd5 *ctx, uchar digest[CRYPT_MD5_SIZE])
 {
     uchar bits[8];
     uint  index, padLen;
@@ -420,32 +420,32 @@ static void decodeMd5(uint *output, uchar *input, uint len)
 }
 
 
-PUBLIC void cryptGetMd5Block(uchar *buf, ssize buflen, uchar hash[CRYPT_MD5_SIZE])
+PUBLIC void cryptGetMd5Block(uchar *buf, size_t buflen, uchar hash[CRYPT_MD5_SIZE])
 {
-    RMd5 ctx;
+    CryptMd5 ctx;
 
     if (buflen <= 0) {
         buflen = slen((char*) buf);
     }
     cryptMd5Init(&ctx);
-    cryptMd5Update(&ctx, buf, (int) buflen);
+    cryptMd5Update(&ctx, buf, (uint) buflen);
     cryptMd5Finalize(&ctx, hash);
-    memset(&ctx, 0, sizeof(RMd5));
+    memset(&ctx, 0, sizeof(CryptMd5));
 }
 
 
-PUBLIC char *cryptGetMd5(uchar *buf, ssize buflen)
+PUBLIC char *cryptGetMd5(uchar *buf, size_t buflen)
 {
-    RMd5  ctx;
-    uchar hash[CRYPT_MD5_SIZE];
+    CryptMd5 ctx;
+    uchar    hash[CRYPT_MD5_SIZE];
 
     if (buflen <= 0) {
         buflen = slen((char*) buf);
     }
     cryptMd5Init(&ctx);
-    cryptMd5Update(&ctx, buf, (int) buflen);
+    cryptMd5Update(&ctx, buf, (uint) buflen);
     cryptMd5Finalize(&ctx, hash);
-    memset(&ctx, 0, sizeof(RMd5));
+    memset(&ctx, 0, sizeof(CryptMd5));
     return cryptMd5HashToString(hash);
 }
 
@@ -468,10 +468,10 @@ PUBLIC char *cryptMd5HashToString(uchar hash[CRYPT_MD5_SIZE])
 
 PUBLIC char *cryptGetFileMd5(cchar *path)
 {
-    RMd5  ctx;
-    uchar hash[CRYPT_MD5_SIZE], buf[ME_BUFSIZE];
-    ssize len;
-    int   fd;
+    CryptMd5 ctx;
+    uchar    hash[CRYPT_MD5_SIZE], buf[ME_BUFSIZE];
+    ssize    len;
+    int      fd;
 
     memset(hash, 0, CRYPT_MD5_SIZE);
     if ((fd = open(path, O_RDONLY | O_BINARY, 0)) < 0) {
@@ -479,15 +479,15 @@ PUBLIC char *cryptGetFileMd5(cchar *path)
     }
     cryptMd5Init(&ctx);
     while ((len = read(fd, buf, ME_BUFSIZE)) > 0) {
-        cryptMd5Update(&ctx, buf, (int) len);
+        cryptMd5Update(&ctx, buf, (uint) len);
     }
     if (len < 0) {
-        memset(&ctx, 0, sizeof(RMd5));
+        memset(&ctx, 0, sizeof(CryptMd5));
         close(fd);
         return 0;
     }
     cryptMd5Finalize(&ctx, hash);
-    memset(&ctx, 0, sizeof(RMd5));
+    memset(&ctx, 0, sizeof(CryptMd5));
     close(fd);
     return cryptMd5HashToString(hash);
 }
@@ -506,12 +506,12 @@ PUBLIC char *cryptGetFileMd5(cchar *path)
 
 #define sha1Shift(bits, word) (((word) << (bits)) | ((word) >> (32 - (bits))))
 
-PUBLIC char *cryptGetSha1(cuchar *s, ssize ilen)
+PUBLIC char *cryptGetSha1(cuchar *s, size_t ilen)
 {
     return cryptGetSha1WithPrefix(s, ilen, NULL);
 }
 
-PUBLIC char *cryptGetSha1Base64(cchar *s, ssize ilen)
+PUBLIC char *cryptGetSha1Base64(cchar *s, size_t ilen)
 {
     CryptSha1 sha;
     uchar     hash[CRYPT_SHA1_SIZE + 1];
@@ -526,14 +526,14 @@ PUBLIC char *cryptGetSha1Base64(cchar *s, ssize ilen)
     return cryptEncode64Block((cuchar*) hash, CRYPT_SHA1_SIZE);
 }
 
-PUBLIC char *cryptGetSha1WithPrefix(cuchar *buf, ssize length, cchar *prefix)
+PUBLIC char *cryptGetSha1WithPrefix(cuchar *buf, size_t length, cchar *prefix)
 {
     CryptSha1 sha;
     uchar     hash[CRYPT_SHA1_SIZE];
     cchar     *hex = "0123456789abcdef";
     char      *r, *str;
     char      result[(CRYPT_SHA1_SIZE * 2) + 1];
-    ssize     len;
+    size_t    len;
     int       i;
 
     if (length <= 0) {
@@ -589,10 +589,10 @@ static void cryptSha1Process(CryptSha1 *sha)
     int  t;
 
     for (t = 0; t < 16; t++) {
-        W[t] = sha->block[t * 4] << 24;
-        W[t] |= sha->block[t * 4 + 1] << 16;
-        W[t] |= sha->block[t * 4 + 2] << 8;
-        W[t] |= sha->block[t * 4 + 3];
+        W[t] = ((uint) sha->block[t * 4]) << 24;
+        W[t] |= ((uint) sha->block[t * 4 + 1]) << 16;
+        W[t] |= ((uint) sha->block[t * 4 + 2]) << 8;
+        W[t] |= (uint) sha->block[t * 4 + 3];
     }
     for (t = 16; t < 80; t++) {
         W[t] = sha1Shift(1, W[t - 3] ^ W[t - 8] ^ W[t - 14] ^ W[t - 16]);
@@ -643,7 +643,7 @@ static void cryptSha1Process(CryptSha1 *sha)
     sha->index = 0;
 }
 
-PUBLIC void cryptSha1Update(CryptSha1 *sha, cuchar *msg, ssize len)
+PUBLIC void cryptSha1Update(CryptSha1 *sha, cuchar *msg, size_t len)
 {
     while (len--) {
         sha->block[sha->index++] = (*msg & 0xFF);
@@ -741,7 +741,7 @@ static const uint32 K256[] =
 #define S1(x)       (ROTR(x, 17) ^ ROTR(x, 19) ^  SHR(x, 10))
 #define S2(x)       (ROTR(x, 2) ^ ROTR(x, 13) ^ ROTR(x, 22))
 #define S3(x)       (ROTR(x, 6) ^ ROTR(x, 11) ^ ROTR(x, 25))
-#define F0(x, y, z) ((x &y) | (z & (x | y)))
+#define F0(x, y, z) ((x & y) | (z & (x | y)))
 #define F1(x, y, z) (z ^ (x & (y ^ z)))
 
 PUBLIC void cryptSha256Init(CryptSha256 *ctx)
@@ -817,16 +817,16 @@ static void sha256Process(CryptSha256 *ctx, cuchar data[64])
     }
 }
 
-PUBLIC void cryptSha256Update(CryptSha256 *ctx, cuchar *input, ssize ilen)
+PUBLIC void cryptSha256Update(CryptSha256 *ctx, cuchar *input, size_t ilen)
 {
     uint32 left;
-    int    fill;
+    size_t fill;
 
     if (ilen == 0) {
         return;
     }
     left = ctx->count[0] & 0x3F;
-    fill = 64 - left;
+    fill = 64 - (size_t) left;
 
     ctx->count[0] += (uint32) ilen;
     ctx->count[0] &= 0xFFFFFFFF;
@@ -885,18 +885,18 @@ PUBLIC void cryptSha256Finalize(CryptSha256 *ctx, uchar output[CRYPT_SHA256_SIZE
     PUT(ctx->state[7], output, 28);
 }
 
-PUBLIC void cryptGetSha256Block(cuchar *input, ssize ilen, uchar output[CRYPT_SHA256_SIZE])
+PUBLIC void cryptGetSha256Block(cuchar *input, size_t ilen, uchar output[CRYPT_SHA256_SIZE])
 {
     CryptSha256 ctx;
 
     cryptSha256Init(&ctx);
     cryptSha256Start(&ctx);
-    cryptSha256Update(&ctx, input, (int) ilen);
+    cryptSha256Update(&ctx, input, ilen);
     cryptSha256Finalize(&ctx, output);
     cryptSha256Term(&ctx);
 }
 
-PUBLIC char *cryptGetSha256(cuchar *input, ssize ilen)
+PUBLIC char *cryptGetSha256(cuchar *input, size_t ilen)
 {
     CryptSha256 ctx;
     uchar       output[CRYPT_SHA256_SIZE];
@@ -906,13 +906,13 @@ PUBLIC char *cryptGetSha256(cuchar *input, ssize ilen)
     }
     cryptSha256Init(&ctx);
     cryptSha256Start(&ctx);
-    cryptSha256Update(&ctx, input, (int) ilen);
+    cryptSha256Update(&ctx, input, ilen);
     cryptSha256Finalize(&ctx, output);
     cryptSha256Term(&ctx);
     return cryptSha256HashToString(output);
 }
 
-PUBLIC char *cryptGetSha256Base64(cchar *s, ssize ilen)
+PUBLIC char *cryptGetSha256Base64(cchar *s, size_t ilen)
 {
     char *hash, *result;
 
@@ -941,7 +941,7 @@ PUBLIC char *cryptGetFileSha256(cchar *path)
     cryptSha256Init(&ctx);
     cryptSha256Start(&ctx);
     while ((len = read(fd, buf, ME_BUFSIZE)) > 0) {
-        cryptSha256Update(&ctx, buf, (int) len);
+        cryptSha256Update(&ctx, buf, (size_t) len);
     }
     if (len < 0) {
         memset(&ctx, 0, sizeof(CryptSha256));
@@ -984,6 +984,467 @@ PUBLIC char *cryptSha256HashToString(uchar hash[CRYPT_SHA256_SIZE])
 #undef GET
 #undef PUT
 #endif /* ME_CRYPT_SHA256 */
+
+/*********************************** SHA512 ***********************************/
+
+#if ME_CRYPT_SHA512
+
+#define GET64(n, b, i) \
+        if (1) { \
+            (n) = ((uint64) b[i] << 56) | ((uint64) b[i + 1] << 48) | \
+                  ((uint64) b[i + 2] << 40) | ((uint64) b[i + 3] << 32) | \
+                  ((uint64) b[i + 4] << 24) | ((uint64) b[i + 5] << 16) | \
+                  ((uint64) b[i + 6] << 8) | ((uint64) b[i + 7]); \
+        } else
+
+#define PUT64(n, b, i) \
+        if (1) { \
+            b[i] = (uchar) ((n) >> 56); b[i + 1] = (uchar) ((n) >> 48); \
+            b[i + 2] = (uchar) ((n) >> 40); b[i + 3] = (uchar) ((n) >> 32); \
+            b[i + 4] = (uchar) ((n) >> 24); b[i + 5] = (uchar) ((n) >> 16); \
+            b[i + 6] = (uchar) ((n) >> 8); b[i + 7] = (uchar) ((n)); \
+        } else
+
+static const uint64 K512[] =
+{
+    0x428a2f98d728ae22ULL, 0x7137449123ef65cdULL, 0xb5c0fbcfec4d3b2fULL, 0xe9b5dba58189dbbcULL,
+    0x3956c25bf348b538ULL, 0x59f111f1b605d019ULL, 0x923f82a4af194f9bULL, 0xab1c5ed5da6d8118ULL,
+    0xd807aa98a3030242ULL, 0x12835b0145706fbeULL, 0x243185be4ee4b28cULL, 0x550c7dc3d5ffb4e2ULL,
+    0x72be5d74f27b896fULL, 0x80deb1fe3b1696b1ULL, 0x9bdc06a725c71235ULL, 0xc19bf174cf692694ULL,
+    0xe49b69c19ef14ad2ULL, 0xefbe4786384f25e3ULL, 0x0fc19dc68b8cd5b5ULL, 0x240ca1cc77ac9c65ULL,
+    0x2de92c6f592b0275ULL, 0x4a7484aa6ea6e483ULL, 0x5cb0a9dcbd41fbd4ULL, 0x76f988da831153b5ULL,
+    0x983e5152ee66dfabULL, 0xa831c66d2db43210ULL, 0xb00327c898fb213fULL, 0xbf597fc7beef0ee4ULL,
+    0xc6e00bf33da88fc2ULL, 0xd5a79147930aa725ULL, 0x06ca6351e003826fULL, 0x142929670a0e6e70ULL,
+    0x27b70a8546d22ffcULL, 0x2e1b21385c26c926ULL, 0x4d2c6dfc5ac42aedULL, 0x53380d139d95b3dfULL,
+    0x650a73548baf63deULL, 0x766a0abb3c77b2a8ULL, 0x81c2c92e47edaee6ULL, 0x92722c851482353bULL,
+    0xa2bfe8a14cf10364ULL, 0xa81a664bbc423001ULL, 0xc24b8b70d0f89791ULL, 0xc76c51a30654be30ULL,
+    0xd192e819d6ef5218ULL, 0xd69906245565a910ULL, 0xf40e35855771202aULL, 0x106aa07032bbd1b8ULL,
+    0x19a4c116b8d2d0c8ULL, 0x1e376c085141ab53ULL, 0x2748774cdf8eeb99ULL, 0x34b0bcb5e19b48a8ULL,
+    0x391c0cb3c5c95a63ULL, 0x4ed8aa4ae3418acbULL, 0x5b9cca4f7763e373ULL, 0x682e6ff3d6b2b8a3ULL,
+    0x748f82ee5defb2fcULL, 0x78a5636f43172f60ULL, 0x84c87814a1f0ab72ULL, 0x8cc702081a6439ecULL,
+    0x90befffa23631e28ULL, 0xa4506cebde82bde9ULL, 0xbef9a3f7b2c67915ULL, 0xc67178f2e372532bULL,
+    0xca273eceea26619cULL, 0xd186b8c721c0c207ULL, 0xeada7dd6cde0eb1eULL, 0xf57d4f7fee6ed178ULL,
+    0x06f067aa72176fbaULL, 0x0a637dc5a2c898a6ULL, 0x113f9804bef90daeULL, 0x1b710b35131c471bULL,
+    0x28db77f523047d84ULL, 0x32caab7b40c72493ULL, 0x3c9ebe0a15c9bebcULL, 0x431d67c49c100d4cULL,
+    0x4cc5d4becb3e42b6ULL, 0x597f299cfc657e2aULL, 0x5fcb6fab3ad6faecULL, 0x6c44198c4a475817ULL,
+};
+
+#define SHR512(x, n)    ((x) >> (n))
+#define ROTR512(x, n)   (SHR512(x, n) | ((x) << (64 - (n))))
+#define S512_0(x)       (ROTR512(x, 1) ^ ROTR512(x, 8) ^  SHR512(x, 7))
+#define S512_1(x)       (ROTR512(x, 19) ^ ROTR512(x, 61) ^  SHR512(x, 6))
+#define S512_2(x)       (ROTR512(x, 28) ^ ROTR512(x, 34) ^ ROTR512(x, 39))
+#define S512_3(x)       (ROTR512(x, 14) ^ ROTR512(x, 18) ^ ROTR512(x, 41))
+#define F512_0(x, y, z) ((x & y) | (z & (x | y)))
+#define F512_1(x, y, z) (z ^ (x & (y ^ z)))
+
+PUBLIC void cryptSha512Init(CryptSha512 *ctx)
+{
+    memset(ctx, 0, sizeof(CryptSha512));
+}
+
+PUBLIC void cryptSha512Term(CryptSha512 *ctx)
+{
+    if (ctx) {
+        memset(ctx, 0, sizeof(CryptSha512));
+    }
+}
+
+PUBLIC void cryptSha512Start(CryptSha512 *ctx)
+{
+    memset(ctx, 0, sizeof(CryptSha512));
+
+    ctx->count[0] = 0;
+    ctx->count[1] = 0;
+    ctx->state[0] = 0x6a09e667f3bcc908ULL;
+    ctx->state[1] = 0xbb67ae8584caa73bULL;
+    ctx->state[2] = 0x3c6ef372fe94f82bULL;
+    ctx->state[3] = 0xa54ff53a5f1d36f1ULL;
+    ctx->state[4] = 0x510e527fade682d1ULL;
+    ctx->state[5] = 0x9b05688c2b3e6c1fULL;
+    ctx->state[6] = 0x1f83d9abfb41bd6bULL;
+    ctx->state[7] = 0x5be0cd19137e2179ULL;
+}
+
+static void sha512Process(CryptSha512 *ctx, cuchar data[128])
+{
+    uint64 t1, t2, W[80], A[8];
+    uint   i;
+
+    #define P512(a, b, c, d, e, f, g, h, x, K512) { \
+                t1 = h + S512_3(e) + F512_1(e, f, g) + K512 + x; \
+                t2 = S512_2(a) + F512_0(a, b, c); \
+                d += t1; \
+                h = t1 + t2; \
+}
+
+    #define R512(t)                               (W[t] = S512_1(W[t - 2]) + W[t - 7] + S512_0(W[t - 15]) + W[t - 16])
+
+    for (i = 0; i < 8; i++) {
+        A[i] = ctx->state[i];
+    }
+    for (i = 0; i < 16; i++) {
+        GET64(W[i], data, 8 * i);
+    }
+    for (i = 0; i < 16; i += 8) {
+        P512(A[0], A[1], A[2], A[3], A[4], A[5], A[6], A[7], W[i + 0], K512[i + 0]);
+        P512(A[7], A[0], A[1], A[2], A[3], A[4], A[5], A[6], W[i + 1], K512[i + 1]);
+        P512(A[6], A[7], A[0], A[1], A[2], A[3], A[4], A[5], W[i + 2], K512[i + 2]);
+        P512(A[5], A[6], A[7], A[0], A[1], A[2], A[3], A[4], W[i + 3], K512[i + 3]);
+        P512(A[4], A[5], A[6], A[7], A[0], A[1], A[2], A[3], W[i + 4], K512[i + 4]);
+        P512(A[3], A[4], A[5], A[6], A[7], A[0], A[1], A[2], W[i + 5], K512[i + 5]);
+        P512(A[2], A[3], A[4], A[5], A[6], A[7], A[0], A[1], W[i + 6], K512[i + 6]);
+        P512(A[1], A[2], A[3], A[4], A[5], A[6], A[7], A[0], W[i + 7], K512[i + 7]);
+    }
+    for (i = 16; i < 80; i += 8) {
+        P512(A[0], A[1], A[2], A[3], A[4], A[5], A[6], A[7], R512(i + 0), K512[i + 0]);
+        P512(A[7], A[0], A[1], A[2], A[3], A[4], A[5], A[6], R512(i + 1), K512[i + 1]);
+        P512(A[6], A[7], A[0], A[1], A[2], A[3], A[4], A[5], R512(i + 2), K512[i + 2]);
+        P512(A[5], A[6], A[7], A[0], A[1], A[2], A[3], A[4], R512(i + 3), K512[i + 3]);
+        P512(A[4], A[5], A[6], A[7], A[0], A[1], A[2], A[3], R512(i + 4), K512[i + 4]);
+        P512(A[3], A[4], A[5], A[6], A[7], A[0], A[1], A[2], R512(i + 5), K512[i + 5]);
+        P512(A[2], A[3], A[4], A[5], A[6], A[7], A[0], A[1], R512(i + 6), K512[i + 6]);
+        P512(A[1], A[2], A[3], A[4], A[5], A[6], A[7], A[0], R512(i + 7), K512[i + 7]);
+    }
+    for (i = 0; i < 8; i++) {
+        ctx->state[i] += A[i];
+    }
+}
+
+PUBLIC void cryptSha512Update(CryptSha512 *ctx, cuchar *input, size_t ilen)
+{
+    uint64 left;
+    size_t fill;
+
+    if (ilen == 0) {
+        return;
+    }
+    left = ctx->count[0] & 0x7F;
+    fill = 128 - (size_t) left;
+
+    ctx->count[0] += (uint64) ilen;
+
+    if (ctx->count[0] < (uint64) ilen) {
+        ctx->count[1]++;
+    }
+    if (left && ilen >= fill) {
+        memcpy((void*) (ctx->buffer + left), input, fill);
+        sha512Process(ctx, ctx->buffer);
+        input += fill;
+        ilen -= fill;
+        left = 0;
+    }
+    while (ilen >= 128) {
+        sha512Process(ctx, input);
+        input += 128;
+        ilen -= 128;
+    }
+    if (ilen > 0) {
+        memcpy((void*) (ctx->buffer + left), input, ilen);
+    }
+}
+
+PUBLIC void cryptSha512Finalize(CryptSha512 *ctx, uchar output[CRYPT_SHA512_SIZE])
+{
+    uint64 last, padn, high, low;
+    uchar  msglen[16];
+
+    static cuchar sha512_padding[128] = {
+        0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    };
+
+    high = (ctx->count[1] << 3) | (ctx->count[0] >> 61);
+    low = ctx->count[0] << 3;
+
+    PUT64(high, msglen, 0);
+    PUT64(low,  msglen, 8);
+
+    last = ctx->count[0] & 0x7F;
+    padn = (last < 112) ? (112 - last) : (240 - last);
+
+    cryptSha512Update(ctx, sha512_padding, padn);
+    cryptSha512Update(ctx, msglen, 16);
+
+    PUT64(ctx->state[0], output,  0);
+    PUT64(ctx->state[1], output,  8);
+    PUT64(ctx->state[2], output, 16);
+    PUT64(ctx->state[3], output, 24);
+    PUT64(ctx->state[4], output, 32);
+    PUT64(ctx->state[5], output, 40);
+    PUT64(ctx->state[6], output, 48);
+    PUT64(ctx->state[7], output, 56);
+}
+
+PUBLIC void cryptGetSha512Block(cuchar *input, size_t ilen, uchar output[CRYPT_SHA512_SIZE])
+{
+    CryptSha512 ctx;
+
+    cryptSha512Init(&ctx);
+    cryptSha512Start(&ctx);
+    cryptSha512Update(&ctx, input, ilen);
+    cryptSha512Finalize(&ctx, output);
+    cryptSha512Term(&ctx);
+}
+
+PUBLIC char *cryptGetSha512(cuchar *input, size_t ilen)
+{
+    CryptSha512 ctx;
+    uchar       output[CRYPT_SHA512_SIZE];
+
+    if (ilen <= 0) {
+        ilen = slen((char*) input);
+    }
+    cryptSha512Init(&ctx);
+    cryptSha512Start(&ctx);
+    cryptSha512Update(&ctx, input, ilen);
+    cryptSha512Finalize(&ctx, output);
+    cryptSha512Term(&ctx);
+    return cryptSha512HashToString(output);
+}
+
+PUBLIC char *cryptGetSha512Base64(cchar *s, size_t ilen)
+{
+    char *hash, *result;
+
+    if (ilen <= 0) {
+        ilen = slen(s);
+    }
+    hash = cryptGetSha512((cuchar*) s, ilen);
+    result = cryptEncode64Block((cuchar*) hash, slen(hash));
+    rFree(hash);
+    return result;
+}
+
+PUBLIC char *cryptGetFileSha512(cchar *path)
+{
+    CryptSha512 ctx;
+    uchar       hash[CRYPT_SHA512_SIZE];
+    uchar       buf[ME_BUFSIZE];
+    ssize       len;
+    int         fd;
+
+    memset(hash, 0, CRYPT_SHA512_SIZE);
+    if ((fd = open(path, O_RDONLY | O_BINARY, 0)) < 0) {
+        return 0;
+    }
+    cryptSha512Init(&ctx);
+    cryptSha512Start(&ctx);
+    while ((len = read(fd, buf, ME_BUFSIZE)) > 0) {
+        cryptSha512Update(&ctx, buf, (size_t) len);
+    }
+    if (len < 0) {
+        memset(&ctx, 0, sizeof(CryptSha512));
+        close(fd);
+        return 0;
+    }
+    cryptSha512Finalize(&ctx, hash);
+    cryptSha512Term(&ctx);
+    close(fd);
+    return cryptSha512HashToString(hash);
+}
+
+PUBLIC char *cryptSha512HashToString(uchar hash[CRYPT_SHA512_SIZE])
+{
+    static char *chars = "0123456789abcdef";
+    char        *result;
+    int         i, j;
+
+    result = rAlloc(CRYPT_SHA512_SIZE * 2 + 1);
+    for (j = i = 0; i < CRYPT_SHA512_SIZE; i++) {
+        result[j++] = chars[hash[i] >> 4];
+        result[j++] = chars[hash[i] & 0xF];
+    }
+    result[j] = 0;
+    return result;
+}
+
+#undef P512
+#undef R512
+#undef SHR512
+#undef ROTR512
+#undef S512_0
+#undef S512_1
+#undef S512_2
+#undef S512_3
+#undef F512_0
+#undef F512_1
+#undef K512
+#undef GET64
+#undef PUT64
+#endif /* ME_CRYPT_SHA512 */
+
+/******************************** HMAC-SHA256 *********************************/
+
+#if ME_CRYPT_HMAC
+
+PUBLIC void cryptHmacSha256Init(CryptHmacSha256 *ctx, cuchar *key, size_t keylen)
+{
+    uchar ipad[CRYPT_HMAC_BLOCK_SIZE];
+    uchar kpad[CRYPT_HMAC_BLOCK_SIZE];
+    int   i;
+
+    if (ctx == NULL || key == NULL) {
+        return;
+    }
+    memset(ctx, 0, sizeof(CryptHmacSha256));
+    memset(kpad, 0, CRYPT_HMAC_BLOCK_SIZE);
+    memset(ipad, 0, CRYPT_HMAC_BLOCK_SIZE);
+
+    // If key is longer than block size, hash it first
+    if (keylen > CRYPT_HMAC_BLOCK_SIZE) {
+        uchar hash[CRYPT_SHA256_SIZE];
+        cryptGetSha256Block(key, keylen, hash);
+        memcpy(kpad, hash, CRYPT_SHA256_SIZE);
+        memset(hash, 0, CRYPT_SHA256_SIZE);
+    } else {
+        memcpy(kpad, key, keylen);
+    }
+
+    // Prepare inner and outer padding
+    for (i = 0; i < CRYPT_HMAC_BLOCK_SIZE; i++) {
+        ipad[i] = kpad[i] ^ 0x36;
+        ctx->opad[i] = kpad[i] ^ 0x5C;
+    }
+
+    // Start inner hash: SHA256(ipad || message)
+    cryptSha256Init(&ctx->sha256);
+    cryptSha256Start(&ctx->sha256);
+    cryptSha256Update(&ctx->sha256, ipad, CRYPT_HMAC_BLOCK_SIZE);
+
+    // Zero sensitive data
+    memset(kpad, 0, CRYPT_HMAC_BLOCK_SIZE);
+    memset(ipad, 0, CRYPT_HMAC_BLOCK_SIZE);
+}
+
+PUBLIC void cryptHmacSha256Update(CryptHmacSha256 *ctx, cuchar *data, size_t datalen)
+{
+    if (ctx == NULL || data == NULL) {
+        return;
+    }
+    if (datalen > 0) {
+        cryptSha256Update(&ctx->sha256, data, datalen);
+    }
+}
+
+PUBLIC void cryptHmacSha256Finalize(CryptHmacSha256 *ctx, uchar output[CRYPT_HMAC_SHA256_SIZE])
+{
+    CryptSha256 outer;
+    uchar       inner[CRYPT_SHA256_SIZE];
+
+    if (ctx == NULL || output == NULL) {
+        if (output != NULL) {
+            memset(output, 0, CRYPT_HMAC_SHA256_SIZE);
+        }
+        return;
+    }
+
+    // Complete inner hash
+    cryptSha256Finalize(&ctx->sha256, inner);
+
+    // Compute outer hash: SHA256(opad || inner_hash)
+    cryptSha256Init(&outer);
+    cryptSha256Start(&outer);
+    cryptSha256Update(&outer, ctx->opad, CRYPT_HMAC_BLOCK_SIZE);
+    cryptSha256Update(&outer, inner, CRYPT_SHA256_SIZE);
+    cryptSha256Finalize(&outer, output);
+
+    // Zero sensitive data
+    memset(inner, 0, CRYPT_SHA256_SIZE);
+    memset(&outer, 0, sizeof(CryptSha256));
+}
+
+PUBLIC void cryptHmacSha256Term(CryptHmacSha256 *ctx)
+{
+    if (ctx == NULL) {
+        return;
+    }
+    cryptSha256Term(&ctx->sha256);
+    memset(ctx, 0, sizeof(CryptHmacSha256));
+}
+
+PUBLIC bool cryptMatchHmacSha256(cuchar hmac1[CRYPT_HMAC_SHA256_SIZE], cuchar hmac2[CRYPT_HMAC_SHA256_SIZE])
+{
+    uchar c;
+    uint  i;
+
+    if (hmac1 == NULL || hmac2 == NULL) {
+        return 0;
+    }
+
+    /*
+        Constant-time comparison to prevent timing attacks.
+        XOR all bytes and accumulate differences in c.
+     */
+    for (i = 0, c = 0; i < CRYPT_HMAC_SHA256_SIZE; i++) {
+        c |= hmac1[i] ^ hmac2[i];
+    }
+    return !c;
+}
+
+PUBLIC void cryptGetHmacSha256Block(cuchar *key, size_t keylen, cuchar *data, size_t datalen,
+                                    uchar output[CRYPT_HMAC_SHA256_SIZE])
+{
+    CryptHmacSha256 ctx;
+
+    if (key == NULL || data == NULL || output == NULL) {
+        if (output != NULL) {
+            memset(output, 0, CRYPT_HMAC_SHA256_SIZE);
+        }
+        return;
+    }
+    cryptHmacSha256Init(&ctx, key, keylen);
+    cryptHmacSha256Update(&ctx, data, datalen);
+    cryptHmacSha256Finalize(&ctx, output);
+    cryptHmacSha256Term(&ctx);
+}
+
+PUBLIC char *cryptGetHmacSha256(cuchar *key, size_t keylen, cuchar *data, size_t datalen)
+{
+    static char *chars = "0123456789abcdef";
+    uchar       output[CRYPT_HMAC_SHA256_SIZE];
+    char        *result;
+    int         i, j;
+
+    if (key == NULL || data == NULL) {
+        return NULL;
+    }
+    cryptGetHmacSha256Block(key, keylen, data, datalen, output);
+
+    // Convert binary to hex string
+    result = rAlloc(CRYPT_HMAC_SHA256_SIZE * 2 + 1);
+    for (j = i = 0; i < CRYPT_HMAC_SHA256_SIZE; i++) {
+        result[j++] = chars[output[i] >> 4];
+        result[j++] = chars[output[i] & 0xF];
+    }
+    result[j] = 0;
+
+    // Zero sensitive data
+    memset(output, 0, CRYPT_HMAC_SHA256_SIZE);
+    return result;
+}
+
+PUBLIC char *cryptGetHmacSha256Base64(cuchar *key, size_t keylen, cuchar *data, size_t datalen)
+{
+    uchar hash[CRYPT_HMAC_SHA256_SIZE];
+    char  *result;
+
+    if (key == NULL || data == NULL) {
+        return NULL;
+    }
+    cryptGetHmacSha256Block(key, keylen, data, datalen, hash);
+    result = cryptEncode64Block(hash, CRYPT_HMAC_SHA256_SIZE);
+    memset(hash, 0, CRYPT_HMAC_SHA256_SIZE);
+    return result;
+}
+
+#endif /* ME_CRYPT_HMAC */
 
 /************************************ Blowfish *******************************/
 
@@ -1278,7 +1739,7 @@ static const uint ORIG_S[4][256] = {
 };
 
 static void bencrypt(Blowfish *bp, uint *xl, uint *xr);
-static void binit(Blowfish *bp, uchar *key, ssize keylen);
+static void binit(Blowfish *bp, uchar *key, size_t keylen);
 
 static uint BF(Blowfish *bp, uint x)
 {
@@ -1299,10 +1760,10 @@ static uint BF(Blowfish *bp, uint x)
     return y;
 }
 
-static void binit(Blowfish *bp, uchar *key, ssize keylen)
+static void binit(Blowfish *bp, uchar *key, size_t keylen)
 {
-    uint data, datal, datar;
-    int  i, j, k;
+    uint   data, datal, datar;
+    size_t i, j, k;
 
     for (i = 0; i < 4; i++) {
         for (j = 0; j < 256; j++) {
@@ -1385,13 +1846,12 @@ static void bdecrypt(Blowfish *bp, uint *xl, uint *xr)
 }
 #endif
 
-PUBLIC char *cryptEncodePassword(cchar *password, cchar *salt, int rounds)
+PUBLIC char *cryptEncodePassword(cchar *password, cchar *salt, size_t rounds)
 {
     Blowfish bf;
     char     *result, *key;
     uint     *text;
-    ssize    len, limit;
-    int      i, j;
+    size_t   i, j, len, limit;
 
     if (slen(password) > ME_CRYPT_MAX_PASSWORD) {
         return 0;
@@ -1413,12 +1873,12 @@ PUBLIC char *cryptEncodePassword(cchar *password, cchar *salt, int rounds)
     return result;
 }
 
-PUBLIC char *cryptMakeSalt(ssize size)
+PUBLIC char *cryptMakeSalt(size_t size)
 {
-    char  *chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-    uchar *random;
-    char  *rp, *result;
-    ssize clen, i;
+    char   *chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    uchar  *random;
+    char   *rp, *result;
+    size_t clen, i;
 
     size = (size + sizeof(int) - 1) & ~(sizeof(int) - 1);
     random = rAlloc(size + 1);
@@ -1439,7 +1899,7 @@ PUBLIC char *cryptMakeSalt(ssize size)
 
     Algorithm: Rounds: Salt: Hash
  */
-PUBLIC char *cryptMakePassword(cchar *password, int saltLength, int rounds)
+PUBLIC char *cryptMakePassword(cchar *password, size_t saltLength, size_t rounds)
 {
     cchar *salt;
 
@@ -1453,7 +1913,7 @@ PUBLIC char *cryptMakePassword(cchar *password, int saltLength, int rounds)
         rounds = CRYPT_BLOWFISH_ROUNDS;
     }
     salt = cryptMakeSalt(saltLength);
-    return sfmt("%s:%05d:%s:%s", CRYPT_BLOWFISH, rounds, salt, cryptEncodePassword(password, salt, rounds));
+    return sfmt("%s:%05d:%s:%s", CRYPT_BLOWFISH, (int) rounds, salt, cryptEncodePassword(password, salt, rounds));
 }
 
 PUBLIC bool cryptCheckPassword(cchar *plainTextPassword, cchar *passwordHash)
@@ -1478,7 +1938,7 @@ PUBLIC bool cryptCheckPassword(cchar *plainTextPassword, cchar *passwordHash)
     if (!rounds || !salt || !hash) {
         return 0;
     }
-    given = cryptEncodePassword(plainTextPassword, salt, atoi(rounds));
+    given = cryptEncodePassword(plainTextPassword, salt, (size_t) atoi(rounds));
     result = cryptMatch(given, hash);
     if (given) {
         rFree(given);
@@ -1511,10 +1971,10 @@ PUBLIC int rGenKey(RKey *skey)
     return 0;
 }
 
-PUBLIC int rGetPubKey(RKey *skey, uchar *buf, ssize bufsize)
+PUBLIC int rGetPubKey(RKey *skey, uchar *buf, size_t bufsize)
 {
     AsyKey *key = skey;
-    ssize  len;
+    size_t len;
     uchar  pubkey[MBEDTLS_MPI_MAX_SIZE];
 
     memset(pubkey, 0, sizeof(pubkey));
@@ -1526,7 +1986,7 @@ PUBLIC int rGetPubKey(RKey *skey, uchar *buf, ssize bufsize)
     return (int) len;
 }
 
-PUBLIC int rLoadPubKey(RKey *skey, uchar *buf, ssize bufsize)
+PUBLIC int rLoadPubKey(RKey *skey, uchar *buf, size_t bufsize)
 {
     AsyKey *key = skey;
 
@@ -1537,7 +1997,7 @@ PUBLIC int rLoadPubKey(RKey *skey, uchar *buf, ssize bufsize)
     return 0;
 }
 
-PUBLIC int rSign(RKey *skey, uchar *sum, ssize sumsize)
+PUBLIC int rSign(RKey *skey, uchar *sum, size_t sumsize)
 {
     AsyKey *key = skey;
     uchar  signature[MBEDTLS_MPI_MAX_SIZE];
@@ -1555,7 +2015,7 @@ PUBLIC int rSign(RKey *skey, uchar *sum, ssize sumsize)
     Parse a PEM encoded string from "buf" into skey.
     If skey is NULL, then allocate a key and return it.
  */
-PUBLIC RKey *cryptParsePubKey(RKey *skey, cchar *buf, ssize buflen)
+PUBLIC RKey *cryptParsePubKey(RKey *skey, cchar *buf, size_t buflen)
 {
     AsyKey *key = skey;
 
@@ -1573,7 +2033,7 @@ PUBLIC RKey *cryptParsePubKey(RKey *skey, cchar *buf, ssize buflen)
     return (RKey*) key;
 }
 
-PUBLIC int rVerify(RKey *skey, uchar *sum, ssize sumsize, uchar *signature, ssize siglen)
+PUBLIC int rVerify(RKey *skey, uchar *sum, size_t sumsize, uchar *signature, size_t siglen)
 {
     AsyKey *key = skey;
 
@@ -1592,7 +2052,7 @@ PUBLIC void rFreeKey(RKey *skey)
     }
 }
 
-PUBLIC ssize rBase64Encode(cuchar *buf, ssize bufsize, char *dest, ssize destLen)
+PUBLIC ssize rBase64Encode(cuchar *buf, size_t bufsize, char *dest, size_t destLen)
 {
     size_t len;
 
@@ -1600,7 +2060,7 @@ PUBLIC ssize rBase64Encode(cuchar *buf, ssize bufsize, char *dest, ssize destLen
     return len;
 }
 
-PUBLIC ssize rBase64Decode(cchar *buf, ssize bufsize, uchar *dest, ssize destLen)
+PUBLIC ssize rBase64Decode(cchar *buf, size_t bufsize, uchar *dest, size_t destLen)
 {
     size_t len;
 
@@ -1618,14 +2078,15 @@ PUBLIC ssize rBase64Decode(cchar *buf, ssize bufsize, uchar *dest, ssize destLen
     Get random bytes from the system.
     If block is true, use /dev/random, otherwise use /dev/urandom.
     If the system does not have a secure random number generator, return -1.
-    SECURITY Acceptable: it is the callers responsibility to ensure that the random number generator is secure 
+    SECURITY Acceptable: it is the callers responsibility to ensure that the random number generator is secure
     and to manage the risk of using non-blocking random number generators that may have insufficient entropy.
  */
-PUBLIC int cryptGetRandomBytes(uchar *buf, ssize length, bool block)
+PUBLIC int cryptGetRandomBytes(uchar *buf, size_t length, bool block)
 {
 #if ME_UNIX_LIKE
-    ssize sofar, rc;
-    int   fd;
+    size_t sofar;
+    ssize  rc;
+    int    fd;
 
     if (!buf || length <= 0) {
         return R_ERR_BAD_ARGS;
@@ -1641,8 +2102,8 @@ PUBLIC int cryptGetRandomBytes(uchar *buf, ssize length, bool block)
             close(fd);
             return -1;
         }
-        length -= rc;
-        sofar += rc;
+        length -= (size_t) rc;
+        sofar += (size_t) rc;
     } while (length > 0);
     close(fd);
 
@@ -1650,6 +2111,9 @@ PUBLIC int cryptGetRandomBytes(uchar *buf, ssize length, bool block)
     HCRYPTPROV prov;
     int        rc;
 
+    if (!buf || length <= 0) {
+        return R_ERR_BAD_ARGS;
+    }
     rc = 0;
     if (!CryptAcquireContext(&prov, NULL, NULL, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT | 0x40)) {
         return -1;
@@ -1664,6 +2128,9 @@ PUBLIC int cryptGetRandomBytes(uchar *buf, ssize length, bool block)
     /*
         Fallback: use MbedTLS CTR-DRBG if available; otherwise, fail securely.
      */
+    if (!buf || length <= 0) {
+        return R_ERR_BAD_ARGS;
+    }
     /* Local forward declaration to avoid header ordering issues */
     if (mbedtls_ctr_drbg_random(rGetTlsRng(), (uchar*) buf, (size_t) length) != 0) {
         rError("security", "MbedTLS RNG failed");
@@ -1755,10 +2222,11 @@ PUBLIC char *cryptGetPassword(cchar *prompt)
  */
 static cchar *LETTERS = "0123456789ABCDEFGHJKMNPQRSTVWXYZZ";
 
-PUBLIC char *cryptID(ssize size)
+PUBLIC char *cryptID(size_t size)
 {
-    char *bytes;
-    int  i, index, lettersLen;
+    char   *bytes;
+    size_t i;
+    int    index, lettersLen;
 
     if (size <= 0) {
         return NULL;
@@ -1786,30 +2254,30 @@ PUBLIC char *cryptID(ssize size)
  */
 PUBLIC bool cryptMatch(cchar *s1, cchar *s2)
 {
-    ssize   i, len1, len2, maxLen;
-    uchar   c, lengthDiff;
+    size_t i, len1, len2, maxLen;
+    uchar  c, lengthDiff;
 
     len1 = slen(s1);
     len2 = slen(s2);
-    
+
     lengthDiff = (uchar) (len1 != len2);
-    
-    /* 
-        Always compare the maximum length to ensure constant time 
-    */
+
+    /*
+        Always compare the maximum length to ensure constant time
+     */
     maxLen = (len1 > len2) ? len1 : len2;
     for (i = 0, c = 0; i < maxLen; i++) {
-        uchar c1 = (i < len1) ? (uchar)s1[i] : 0;
-        uchar c2 = (i < len2) ? (uchar)s2[i] : 0;
+        uchar c1 = (i < len1) ? (uchar) s1[i] : 0;
+        uchar c2 = (i < len2) ? (uchar) s2[i] : 0;
         c |= c1 ^ c2;
     }
-    // Include length difference in the final result 
+    // Include length difference in the final result
     c |= lengthDiff;
     return !c;
 }
 
 /*
-    Copyright (c) Michael O'Brien. All Rights Reserved.
+    Copyright (c) Embedthis Software. All Rights Reserved.
     This is proprietary software and requires a commercial license from the author.
  */
 

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
 #	make-certs - This script builds the following test certificates.
 #	
@@ -63,8 +63,3 @@ if [ $? != 0 ] ; then
 	exit 2
 fi
 rm -f certs.log
-
-#
-#	Install
-#
-cp certs/*.crt certs/*.key state/certs

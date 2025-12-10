@@ -543,6 +543,30 @@ typedef struct uctx {
 
 #endif // SH
 
+#if UCTX_ARCH == UCTX_WINDOWS
+
+#include <windows.h>
+
+#define UCTX_MAX_ARGS 4
+
+typedef struct {
+    void *ss_sp;
+    int ss_flags;
+    size_t ss_size;
+} uctx_stack_t;
+
+typedef struct uctx {
+    unsigned long uc_flags;
+    struct uctx *uc_link;
+    uctx_stack_t uc_stack;
+    LPVOID fiber;
+    void (*entry)(void);
+    void *args[UCTX_MAX_ARGS];
+    int main;
+} uctx_t;
+
+#endif // WINDOWS
+
 #if UCTX_ARCH == UCTX_X64
 
 /*
@@ -733,7 +757,7 @@ typedef void (*uctx_proc)(void);
     @return 0 on success, -1 on failure
     @stability Evolving
  */
-extern int  uctx_getcontext(uctx_t *ucp);
+PUBLIC int uctx_getcontext(uctx_t *ucp);
 
 /**
     Create a new execution context for a fiber.
@@ -747,7 +771,7 @@ extern int  uctx_getcontext(uctx_t *ucp);
     @return 0 on success, -1 on failure
     @stability Evolving
  */
-extern int  uctx_makecontext(uctx_t *ucp, void (*fn)(void), int argc, ...);
+PUBLIC int uctx_makecontext(uctx_t *ucp, void (*fn)(void), int argc, ...);
 
 /**
     Restore execution context and transfer control.
@@ -758,7 +782,7 @@ extern int  uctx_makecontext(uctx_t *ucp, void (*fn)(void), int argc, ...);
     @return This function does not return on success. Returns -1 only on failure.
     @stability Evolving
  */
-extern int  uctx_setcontext(uctx_t *ucp);
+PUBLIC int uctx_setcontext(uctx_t *ucp);
 
 /**
     Atomically save current context and switch to another context.
@@ -770,7 +794,7 @@ extern int  uctx_setcontext(uctx_t *ucp);
     @return 0 when returning to this context after a later context switch, -1 on failure
     @stability Evolving
  */
-extern int  uctx_swapcontext(uctx_t *from, uctx_t *to);
+PUBLIC int uctx_swapcontext(uctx_t *from, uctx_t *to);
 
 /**
     Release resources associated with a context.
@@ -780,7 +804,7 @@ extern int  uctx_swapcontext(uctx_t *from, uctx_t *to);
     @param ucp Pointer to context structure to clean up
     @stability Evolving
  */
-extern void uctx_freecontext(uctx_t *ucp);
+PUBLIC void uctx_freecontext(uctx_t *ucp);
 
 /**
     Configure stack memory for a context.
@@ -793,7 +817,7 @@ extern void uctx_freecontext(uctx_t *ucp);
     @return 0 on success, -1 on failure
     @stability Evolving
  */
-extern int uctx_setstack(uctx_t *up, void *stack, size_t stackSize);
+PUBLIC int uctx_setstack(uctx_t *up, void *stack, size_t stackSize);
 
 /**
     Retrieve the stack base pointer for a context.
@@ -803,7 +827,7 @@ extern int uctx_setstack(uctx_t *up, void *stack, size_t stackSize);
     @return Pointer to the base of the stack memory region, or NULL if no stack is configured. This is the same pointer that was passed to uctx_setstack(), not the current stack pointer.
     @stability Evolving
  */
-extern void *uctx_getstack(uctx_t *up);
+PUBLIC void *uctx_getstack(uctx_t *up);
 
 /**
     Determine if explicit stack allocation is required.
@@ -813,7 +837,26 @@ extern void *uctx_getstack(uctx_t *up);
     @return 1 if explicit stack allocation is required, 0 if stacks are managed internally
     @stability Evolving
  */
-extern int uctx_needstack(void);
+PUBLIC int uctx_needstack(void);
+
+/**
+    Initialize the UCTX subsystem.
+    @description Must be called before any other UCTX functions. On Windows, this converts
+    the current thread to a fiber. On other platforms, this is typically a no-op but should
+    still be called for API consistency and future compatibility.
+    @param ucp Pointer to context structure to initialize
+    @return 0 on success, -1 on failure
+    @stability Evolving
+ */
+PUBLIC int uctx_init(uctx_t *ucp);
+
+/**
+    Terminate the UCTX subsystem and free resources.
+    @description Should be called at application shutdown for proper resource cleanup.
+    Frees any global resources allocated by uctx_init().
+    @stability Evolving
+ */
+PUBLIC void uctx_term(void);
 
 #endif // _h_UCTX
 

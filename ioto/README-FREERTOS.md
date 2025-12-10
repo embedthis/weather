@@ -26,6 +26,24 @@ MbedTLS and OpenSSL. See [Building TLS](../building/) for details.
 Please read [Supported Hardware](https://www.embedthis.com/user/hardware/) for
 a complete target hardware list.
 
+## Getting FreeRTOS
+
+1. Clone the FreeRTOS repository with submodules:
+
+```bash
+git clone --recurse-submodules https://github.com/FreeRTOS/FreeRTOS.git
+```
+
+2. Verify your toolchain by building a demo application:
+
+```bash
+cd FreeRTOS/FreeRTOS/Demo/Posix_GCC
+make
+```
+
+This builds the POSIX/GCC demo which runs on Linux and macOS. For embedded
+targets, choose the appropriate demo directory for your hardware platform.
+
 ## Download Ioto
 
 Navigate to the [Builder](https://admin.embedthis.com/clouds) site and select
@@ -37,6 +55,26 @@ ioto-VERSION director to **ioto**.
 
     tar xvfz ioto-VERSION.tgz
     mv ioto-* ioto
+
+## Project Structure
+
+After setup, your project directory should look like this:
+
+```
+FreeRTOS/
+├── FreeRTOS/
+│   └── Demo/
+│       └── YourApp/              # Your application directory
+│           ├── Makefile          # FreeRTOS app Makefile (edit this)
+│           ├── FreeRTOSConfig.h
+│           ├── main.c            # Your main program
+│           └── ioto/             # Ioto extracted here
+│               ├── lib/          # C source files (rLib.c, webLib.c,
+etc.)
+│               ├── include/      # Headers (ioto.h, r.h, json.h, etc.)
+│               ├── apps/         # App templates (demo, auth, blank)
+│               └── certs/        # Test certificates
+```
 
 ## Preparing Ioto Source
 
@@ -71,10 +109,10 @@ microcontrollers.
 demo | Cloud-based management of a device. Demonstrates simple data
 synchronization and metrics.
 
-The default app is the **demo** app which sends device data and metrics to the
-cloud. 
+The default app is the **unit** test app, but you want to select the **demo**
+app which sends device data and metrics to the cloud. 
 
-To select an app, invoke **make config** with your desired APP:
+To select the demo app, invoke **make config** with your desired APP:
 
     make APP=demo config
 
@@ -106,21 +144,37 @@ int main() {
     ioStopRuntime();
 }
 
-int iotStart() {
+int ioStart() {
     //  This is invoked by ioRun when Ioto is ready
     //  Put your user code here
+    return 0;
 }
 
-void iotStop() {
+void ioStop() {
     //  This is invoked by ioRun when Ioto is shutting down
 }
 ```
+
+## Finding Your FreeRTOS App Makefile
+
+FreeRTOS demo applications include Makefiles for building. The Makefile
+location depends on your target platform:
+
+| Platform | Makefile Location |
+|----------|-------------------|
+| Linux/macOS | `FreeRTOS/FreeRTOS/Demo/Posix_GCC/Makefile` |
+| ARM Cortex-M3 | `FreeRTOS/FreeRTOS/Demo/CORTEX_M3_*/Makefile` |
+| ARM Cortex-M4 | `FreeRTOS/FreeRTOS/Demo/CORTEX_M4_*/Makefile` |
+| RISC-V | `FreeRTOS/FreeRTOS/Demo/RISC-V_*/Makefile` |
+
+For development and testing, the `Posix_GCC` demo is recommended as it runs
+directly on your development machine.
 
 ## Building Ioto and FreeRTOS
 
 The Ioto source files are contained in the **ioto/lib** directory which
 contains C files and one assembly file. The assembly code contains some high
-performace stack management code that is used on Arm, Mips, RiscV and X86
+performance stack management code that is used on Arm, Mips, RiscV and X86
 platforms.
 
 To build your FreeRTOS application with Ioto, edit the FreeRTOS app Makefile
@@ -128,7 +182,7 @@ and add the following lines. This will cause the Makefile to build the Ioto
 source code when compiling FreeRTOS.
 
 ```make
-// Must be after the OBJ_FILES definition
+# Add after the SOURCE_FILES definitions in your Makefile
 
 C_FILES     = $(wildcard ioto/lib/*.c)
 A_FILES     = $(wildcard ioto/lib/*.S)

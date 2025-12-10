@@ -19,43 +19,100 @@ Ioto on the ESP32 has the following requirements:
 * An ESP32 device
 * At least 2MB PSIRAM
 
+## Getting ESP-IDF
+
+1. Install prerequisites (Ubuntu/Debian):
+
+```bash
+sudo apt-get install git wget flex bison gperf python3 python3-pip python3-venv
+\
+    cmake ninja-build ccache libffi-dev libssl-dev dfu-util libusb-1.0-0
+```
+
+For macOS:
+```bash
+brew install cmake ninja dfu-util python3
+```
+
+2. Clone and install ESP-IDF:
+
+```bash
+mkdir -p ~/esp
+cd ~/esp
+git clone --recursive https://github.com/espressif/esp-idf.git
+cd esp-idf
+./install.sh esp32    # or esp32s3, esp32c3, etc.
+```
+
+3. Add ESP-IDF to your environment (run this in each new terminal):
+
+```bash
+. ~/esp/esp-idf/export.sh
+```
+
+For detailed instructions, see the [ESP-IDF Getting Started
+Guide](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/get-started/index.html).
+
 ## Building Ioto for ESP32
 
-This build sequence assumes you have your development environment setup on
-Linux or MacOS with the ESP-IDF installed.
+This build sequence assumes you have ESP-IDF installed and sourced (see Getting
+ESP-IDF above).
 
-First open a terminal and create a directory for your project and the Ioto
-component. Choose any name you like for the project.
+1. Create a project directory:
 
-    mkdir -p myproject
-    cd myproject
-    mkdir components
+```bash
+mkdir -p myproject/components
+cd myproject
+```
 
-Next, add the [ESP
-IDF](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/get-started/index.html) to your environment.  
+2. Source ESP-IDF (if not already done):
 
-    . ~/Path-to-esp-idf/export.sh
+```bash
+. ~/esp/esp-idf/export.sh
+```
 
-### Download Ioto
-
-Navigate to the [Builder](https://admin.embedthis.com/clouds) site and select
-`Products` in the sidebar menu and click on the download link for the `Ioto
-Evaluation`.  Your first device is free.
+3. **Download Ioto**: Navigate to the
+[Builder](https://admin.embedthis.com/clouds) site, select `Products` in the
+sidebar, and download the `Ioto Evaluation`.
 
 <img src="https://www.embedthis.com/images/builder/product-list.avif"
 alt="Product List"><br>
 
-Extract the Ioto source code into the components directory. Then rename the
-**ioto-VERSION** directory to **ioto** and run the **setup-esp32** script.
+4. Extract Ioto into the components directory and run setup:
 
-    cd components
-    tar xvfz ioto-VERSION.tgz
-    mv ioto-* ioto
-    cd ioto
-    bin/setup-esp32
-    cd ../..
+```bash
+cd components
+tar xvfz ioto-VERSION.tgz
+mv ioto-* ioto
+cd ioto
+bin/setup-esp32
+cd ../..
+```
 
-### Sample apps
+## Project Structure
+
+After setup, your project directory should look like this:
+
+```
+myproject/
+├── CMakeLists.txt
+├── Makefile
+├── main/
+│   └── main.c                    # Your application code
+├── state/
+│   └── config/                   # Runtime configuration
+│       ├── ioto.json5
+│       ├── web.json5
+│       └── device.json5
+└── components/
+    └── ioto/
+        ├── lib/                  # Ioto source files
+        ├── include/              # Ioto headers
+        ├── apps/                 # App templates (blink, demo)
+        └── certs/                # Test certificates
+```
+
+## Sample apps
 
 The Ioto source distribution includes two ESP32 example apps. Each example
 includes the necessary configuration files that are copied from the relevant
@@ -106,7 +163,7 @@ The Ioto services are enabled via the Ioto menu config option. Navigate to:
     Ioto
     
 Then enable the desired Ioto services. This will update the **ioto.json5** and
-regenerate the **sdkconfig** and **include/ioto-config.h** files.
+regenerate the **sdkconfig** and **include/config.h** files.
 
 Check your **sdkconfig** that the following settings are defined:
 
@@ -123,8 +180,17 @@ The full list is in **components/ioto/apps/NAME/sdkconfig.defaults**.
 
 ## Set the WIFI Credentials
 
-Edit the main/main.c and define your WIFI SSID and password. You can optionally
-set the hostname as well.
+Edit the **main/main.c** and update the WiFi credentials near the top of the
+file:
+
+```c
+#define WIFI_SSID       "your-wifi-network"
+#define WIFI_PASSWORD   "your-wifi-password"
+#define HOSTNAME        "my-device"
+```
+
+These are used by the `ioWIFI()` call in `app_main()` to connect to your
+network.
 
 ## Registration
 

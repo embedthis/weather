@@ -1,0 +1,45 @@
+{
+    limits: {
+        fibers: 5,
+        stack: '256k'
+    },
+    log: {
+        path: 'web.log',
+        types: 'error',
+        sources: 'all,!mbedtls',
+    },
+    tls: {
+        authority: '../../certs/ca.crt',
+        certificate: '../../certs/test.crt',
+        key: '../../certs/test.key',
+    },
+    web: {
+        documents: '../site',
+        listen: ['http://localhost:4200', 'https://localhost:4243'],
+        limits: {
+            connections: 5000,
+            sessions: 5000,
+            buffer: '1MB',
+            body: '10MB',
+        },
+        routes: [
+            { match: '/test/sig/', handler: 'action', validate: true, role: 'public' },
+            { match: '/test/session/', handler: 'action' },
+            { match: '/test/xsrf/', handler: 'action', xsrf: true },
+            { match: '/test/', handler: 'action' },
+            { match: '/upload/', methods: ['DELETE', 'GET', 'PUT'] },
+            { match: '/trace/', methods: ['DELETE', 'GET', 'HEAD', 'OPTIONS', 'POST', 'PUT', 'TRACE'], trim: '/trace' },
+            { match: '/stream/', trim: '/stream', stream: true, handler: 'action' },
+            { match: '/ws/', methods: ['GET'], handler: 'action' },
+
+            //  Allow GET/HEAD for range request tests
+            { match: '/range-test.txt', methods: ['GET', 'HEAD'] },
+            { match: '/range-test-write.txt', methods: ['GET', 'HEAD'] },
+
+            { /* Catch all */ },
+        ],
+        upload: {
+            dir: './tmp',
+        }
+    }
+}

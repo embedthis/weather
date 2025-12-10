@@ -48,7 +48,8 @@ typedef struct OpenAI {
     @param request Original JSON request object sent to OpenAI
     @param response JSON response object received from OpenAI
     @param arg User-defined argument passed through from the calling function
-    @return Allocated string to be added to the response. Caller must free using rFree. Return NULL if no additional content.
+    @return Allocated string to be added to the response. Caller must free using rFree. Return NULL if no additional
+       content.
     @stability Evolving
  */
 typedef char*(*OpenAIAgent)(cchar *name, Json *request, Json *response, void *arg);

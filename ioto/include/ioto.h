@@ -1,7 +1,9 @@
 /*
     ioto.h - Ioto Device Agent API
 
-    Complete IoT solution combining multiple embedded C libraries into a unified agent for local and cloud-based device management. This header provides the main API for the Ioto Device Agent, including cloud connectivity, database services, web server, MQTT client, and device provisioning.
+    Complete IoT solution combining multiple embedded C libraries into a unified agent for local and cloud-based
+    device management. This header provides the main API for the Ioto Device Agent, including cloud connectivity,
+    database services, web server, MQTT client, and device provisioning.
 
     The Ioto Device Agent is designed for embedded IoT applications and provides:
     - Cloud connectivity and device management
@@ -24,7 +26,7 @@
 /*
     Configuration generated from ioto.json5 services
  */
-#include "ioto-config.h"
+#include "config.h"
 
 /********************************* Dependencies *******************************/
 /*
@@ -69,7 +71,7 @@
     #define SERVICES_PROVISION 1
 #endif
 
-#if SERVICES_PROVISION
+#if SERVICES_PROVISION || SERVICES_CLOUD
     #undef SERVICES_REGISTER
     #define SERVICES_REGISTER 1
 #endif
@@ -82,6 +84,10 @@
     #undef SERVICES_URL
     #define SERVICES_URL 1
     #define ME_COM_URL   1
+#endif
+
+#if SERVICES_MQTT || SERVICES_UPDATE
+#define SERVICES_CRON    1
 #endif
 
 /*
@@ -105,7 +111,7 @@
 #include "mqtt.h"
 #include "url.h"
 #include "web.h"
-#include "websockets.h"
+#include "websock.h"
 #include "openai.h"
 
 /*********************************** Defines **********************************/
@@ -184,11 +190,9 @@ typedef struct Ioto {
     cchar *cmdIotoFile;        /**< Command line override path for the ioto.json5 config file */
     cchar *cmdProfile;         /**< Command line override profile */
     cchar *cmdProduct;         /**< Command line override Product ID Token */
-    cchar *cmdTest;            /**< Command line override for services.test */
     cchar *cmdAIShow;          /**< Command line override for AI request/response trace */
     cchar *cmdWebShow;         /**< Command line override for web request/response trace */
     bool cmdReset : 1;         /** Command line reset */
-    int cmdCount;              /** Test iterations */
 
     bool aiService : 1;        /** AI service */
     bool cloudService : 1;     /** Cloud meta-service */
@@ -199,6 +203,7 @@ typedef struct Ioto {
     bool logService : 1;       /** Log file ingest to CloudWatch logs */
     bool mqttService : 1;      /** MQTT service */
     bool nosave : 1;           /** Do not save. i.e. run in-memory */
+    bool noSaveDevice : 1;     /** Do not save device registration when sourced from environment variables*/
     bool registered : 1;       /** Device has been registered */
     bool provisioned : 1;      /** Provisioned with the cloud */
     bool provisionService : 1; /** Cloud provisioning service */
@@ -211,6 +216,7 @@ typedef struct Ioto {
     bool webService : 1;       /** Web server */
 
     char *serializeService;    /** Manufacturing serialization (factory, auto, none) */
+    cchar *cmdBuilder;         /**< Command line override builder API endpoint */
 
 #if SERVICES_CLOUD || DOXYGEN
     char *instance;            /**< EC2 instance */
@@ -462,9 +468,10 @@ PUBLIC void ioSetBool(cchar *key, bool value);
         the properties of that dimension. The empty object {} denotes no dimensions.
     @param elapsed Number of seconds to buffer metric updates in the cloud before committing to the database.
         This is an optimization. Set to zero for no buffering.
+    @return 0 on success, negative on error
     @stability Evolving
  */
-PUBLIC void ioSetMetric(cchar *metric, double value, cchar *dimensions, int elapsed);
+PUBLIC int ioSetMetric(cchar *metric, double value, cchar *dimensions, int elapsed);
 
 /**
     Set a numeric value in the Ioto cloud key/value store.
@@ -472,9 +479,10 @@ PUBLIC void ioSetMetric(cchar *metric, double value, cchar *dimensions, int elap
         Uses database sync if available, otherwise uses MQTT messaging.
     @param key String key to assign in the store.
     @param value Numeric value to assign to the key.
+    @return 0 on success, negative on error
     @stability Evolving
  */
-PUBLIC void ioSetNum(cchar *key, double value);
+PUBLIC int ioSetNum(cchar *key, double value);
 
 /**
     Schedule a cloud connection based on the MQTT schedule.
@@ -548,7 +556,7 @@ PUBLIC void ioSync(Time when, bool guarantee);
     @return 0 on success, -1 on failure
     @stability Evolving
  */
-PUBLIC int ioUpload(cchar *path, uchar *buf, ssize len);
+PUBLIC int ioUpload(cchar *path, uchar *buf, size_t len);
 
 #if SERVICES_DATABASE
 /**
@@ -608,7 +616,7 @@ PUBLIC void ioSaveShadow(void);
     @param topic Printf style topic format string. The supplied topic is appended to 'ioto/device/DEVICE_ID'
         before sending.
     @param ... Topic string arguments
-    @return Response message or NULL if the request times out. Caller must free.
+    @return Response message or NULL if the request fails or times out. Caller must free.
     @stability Evolving
  */
 PUBLIC char *mqttRequest(Mqtt *mq, cchar *data, Ticks timeout, cchar *topic, ...);
@@ -749,7 +757,7 @@ PUBLIC void ioTermAI(void);
     @see aws, awsPutToS3, awsPutFileToS3
  */
 PUBLIC char *awsSign(cchar *region, cchar *service, cchar *target, cchar *method, cchar *path,
-                     cchar *query, cchar *body, ssize bodyLen, cchar *headers, ...);
+                     cchar *query, cchar *body, size_t bodyLen, cchar *headers, ...);
 
 /**
     Invoke an AWS API request
@@ -766,7 +774,7 @@ PUBLIC char *awsSign(cchar *region, cchar *service, cchar *target, cchar *method
     @stability Evolving
     @see awsPutToS3, awsPutFileToS3, awsSign
  */
-PUBLIC int aws(Url *up, cchar *region, cchar *service, cchar *target, cchar *body, ssize bodyLen, cchar *headers, ...);
+PUBLIC int aws(Url *up, cchar *region, cchar *service, cchar *target, cchar *body, size_t bodyLen, cchar *headers, ...);
 
 /**
     Put a data block to AWS S3
@@ -778,7 +786,7 @@ PUBLIC int aws(Url *up, cchar *region, cchar *service, cchar *target, cchar *bod
     @stability Evolving
     @see aws, awsPutFileToS3, awsSign
  */
-PUBLIC int awsPutToS3(cchar *region, cchar *bucket, cchar *key, cchar *data, ssize dataLen);
+PUBLIC int awsPutToS3(cchar *region, cchar *bucket, cchar *key, cchar *data, size_t dataLen);
 
 /**
     Put a file to AWS S3
