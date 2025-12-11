@@ -23,7 +23,7 @@ endif
 
 all: build
 
-build: config library $(NAME) assets.zip
+build: library config $(NAME) assets.zip
 
 config:
 	@echo "      [Info] Configuring $(NAME)"
@@ -37,7 +37,6 @@ config:
 		mkdir -p ioto/state/config ; \
 		cp state/config/ioto.json5 ioto/state/config ; \
 	fi
-	cd ioto >/dev/null ; bin/prep-build
 	ioto/bin/json --overwrite name=Weather state/config/device.json5
 	ioto/bin/json --overwrite description="Weather App" state/config/device.json5
 	ioto/bin/json --overwrite model="Weather-01" state/config/device.json5
